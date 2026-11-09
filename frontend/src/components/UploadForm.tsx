@@ -382,8 +382,9 @@ export function UploadForm() {
           1
         </span>
         <p>
-          Phase 1 validates uploads and records media metadata. Clip
-          generation is not enabled yet.
+          Phase 2 validates uploads, transcribes speech locally with Whisper,
+          and stores word-level timestamps. Clip generation is not enabled
+          yet.
         </p>
       </div>
     </div>

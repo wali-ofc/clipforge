@@ -236,7 +236,7 @@ export function JobStatusView({ jobId }: { jobId: string }) {
           <span aria-hidden="true">←</span> Upload another video
         </Link>
         <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-700">
-          Phase 1 · validation
+          Phase 2 · transcription
         </span>
       </div>
 
@@ -353,7 +353,7 @@ export function JobStatusView({ jobId }: { jobId: string }) {
                 <AlertIcon className="mt-0.5 h-4 w-4 shrink-0 text-red-300" />
                 <div>
                   <h2 className="text-sm font-semibold text-red-100">
-                    Upload failed validation
+                    Processing failed
                   </h2>
                   <p className="mt-1 text-sm leading-6 text-red-200/80">
                     {job.error ?? "The pipeline reported an unknown error."}
@@ -369,16 +369,48 @@ export function JobStatusView({ jobId }: { jobId: string }) {
                 <CheckIcon className="mt-0.5 h-4 w-4 shrink-0 text-forge-300" />
                 <div>
                   <h2 className="text-sm font-semibold text-forge-200">
-                    Source validated
+                    {job.has_speech === false
+                      ? "No useful speech found"
+                      : "Transcription complete"}
                   </h2>
                   <p className="mt-1 text-sm leading-6 text-forge-200/65">
-                    The file is readable and its media metadata is stored. Clip
-                    generation is not enabled in this Phase 1 build — the next
-                    phases add transcription, moment selection, speaker
-                    tracking, and 9:16 rendering.
+                    {job.has_speech === false
+                      ? "The audio was processed but produced no usable speech segments. The empty transcript is stored so later phases can fall back to non-speech clip selection."
+                      : "The transcript is stored locally with absolute, word-level timestamps. AI moment selection, speaker tracking, and 9:16 rendering arrive in the next phases."}
                   </p>
                 </div>
               </div>
+            </section>
+          ) : null}
+
+          {job.has_transcript ? (
+            <section className="rounded-2xl border border-white/10 bg-surface-900/60 p-5 sm:p-6">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">
+                  Transcript
+                </h2>
+                <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-700">
+                  internal data
+                </span>
+              </div>
+              <dl className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+                <Detail
+                  label="Language"
+                  value={job.transcript_language?.toUpperCase() ?? "Not detected"}
+                />
+                <Detail
+                  label="Segments"
+                  value={String(job.transcript_segment_count ?? 0)}
+                />
+                <Detail
+                  label="Speech"
+                  value={job.has_speech ? "Detected" : "None detected"}
+                />
+              </dl>
+              <p className="mt-3 text-[11px] leading-5 text-zinc-600">
+                Word-level timestamps are stored in the job work directory.
+                Captions are not generated or burned into any video.
+              </p>
             </section>
           ) : null}
 

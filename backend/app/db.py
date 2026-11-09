@@ -69,3 +69,32 @@ def init_db(engine: Engine) -> None:
     from app.models import clip, job  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
+    _apply_sqlite_additive_migrations(engine)
+
+
+def _apply_sqlite_additive_migrations(engine: Engine) -> None:
+    """Add columns introduced after a database was first created.
+
+    ``create_all`` never alters existing tables. This project intentionally
+    avoids a migration framework, so additive SQLite columns are applied
+    here. Only constant column definitions are interpolated.
+    """
+    if engine.dialect.name != "sqlite":
+        return
+
+    additions: dict[str, str] = {
+        "transcript_path": "VARCHAR(1024)",
+        "transcript_language": "VARCHAR(16)",
+        "transcript_segment_count": "INTEGER",
+        "has_speech": "BOOLEAN",
+    }
+
+    with engine.begin() as connection:
+        existing = {
+            row[1] for row in connection.exec_driver_sql("PRAGMA table_info(jobs)")
+        }
+        for column, definition in additions.items():
+            if column not in existing:
+                connection.exec_driver_sql(
+                    f"ALTER TABLE jobs ADD COLUMN {column} {definition}"
+                )

@@ -16,7 +16,12 @@ from app.db import (
     create_session_factory,
     init_db,
 )
-from app.services.tooling import check_media_tools, media_tools_available
+from app.services.tooling import (
+    check_media_tools,
+    check_whisper,
+    media_tools_available,
+)
+from app.services.transcription import Transcriber
 from app.utils.paths import ensure_data_dirs
 from app.worker.runner import JobWorker, recover_interrupted_jobs
 
@@ -31,7 +36,10 @@ def _configure_logging(settings: Settings) -> None:
     )
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    transcriber: Transcriber | None = None,
+) -> FastAPI:
     resolved_settings = settings or get_settings()
 
     @asynccontextmanager
@@ -60,9 +68,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "FFmpeg and ffprobe are configured."
             )
 
+        whisper_check = check_whisper(resolved_settings)
+        app.state.whisper_check = whisper_check
+        if not whisper_check.available:
+            logger.error(
+                "Transcription is unavailable: %s", whisper_check.detail
+            )
+
         recover_interrupted_jobs(session_factory)
 
-        worker = JobWorker(resolved_settings, session_factory)
+        worker = JobWorker(
+            resolved_settings,
+            session_factory,
+            transcriber=transcriber,
+        )
         app.state.worker = worker
         if resolved_settings.worker_autostart:
             worker.start()

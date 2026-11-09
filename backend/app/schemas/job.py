@@ -32,6 +32,11 @@ class JobRead(BaseModel):
     container_format: str | None = None
     frame_rate: float | None = None
 
+    has_transcript: bool = False
+    transcript_language: str | None = None
+    transcript_segment_count: int | None = None
+    has_speech: bool | None = None
+
     created_at: datetime
     updated_at: datetime
     started_at: datetime | None = None

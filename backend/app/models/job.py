@@ -82,6 +82,11 @@ class Job(Base):
     container_format: Mapped[str | None] = mapped_column(String(128), nullable=True)
     frame_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
 
+    transcript_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    transcript_language: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    transcript_segment_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    has_speech: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now
     )
@@ -98,3 +103,7 @@ class Job(Base):
     @property
     def state_enum(self) -> JobState:
         return JobState(self.state)
+
+    @property
+    def has_transcript(self) -> bool:
+        return self.transcript_path is not None

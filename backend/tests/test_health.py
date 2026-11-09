@@ -10,8 +10,15 @@ def test_health_responds_with_dependency_checks(client):
     payload = response.json()
     assert payload["status"] in {"ok", "degraded"}
     assert payload["app"] == "ClipForge"
-    assert set(payload["checks"]) == {"database", "ffmpeg", "ffprobe"}
+    assert set(payload["checks"]) == {
+        "database",
+        "ffmpeg",
+        "ffprobe",
+        "whisper",
+    }
     assert payload["checks"]["database"]["available"] is True
+    assert payload["checks"]["whisper"]["available"] is True
+    assert "faster-whisper" in (payload["checks"]["whisper"]["version"] or "")
     assert payload["limits"]["max_upload_bytes"] > 0
     assert payload["limits"]["allowed_formats"] == [".mp4", ".mov", ".mkv"]
 

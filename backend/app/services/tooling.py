@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from importlib.metadata import PackageNotFoundError, version as package_version
 
 from app.config import Settings
 from app.utils.subprocesses import (
@@ -79,3 +80,33 @@ def check_media_tools(settings: Settings) -> dict[str, ToolCheck]:
 
 def media_tools_available(checks: dict[str, ToolCheck]) -> bool:
     return all(check.available for check in checks.values())
+
+
+def check_whisper(settings: Settings) -> ToolCheck:
+    """Report whether the faster-whisper package is installed.
+
+    The model itself is downloaded lazily on the first transcription, so this
+    check intentionally does not load weights.
+    """
+    try:
+        installed = package_version("faster-whisper")
+    except PackageNotFoundError:
+        return ToolCheck(
+            name="whisper",
+            command=settings.whisper_model,
+            available=False,
+            detail=(
+                "faster-whisper is not installed. Install backend dependencies "
+                "and restart the server."
+            ),
+        )
+
+    return ToolCheck(
+        name="whisper",
+        command=settings.whisper_model,
+        available=True,
+        version=(
+            f"faster-whisper {installed} · {settings.whisper_device}/"
+            f"{settings.whisper_compute_type} · model {settings.whisper_model}"
+        ),
+    )

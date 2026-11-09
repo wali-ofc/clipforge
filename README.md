@@ -2,19 +2,23 @@
 
 Local-first AI video clipping. Long recordings go in; short vertical clips come out — processed entirely on your machine, with no cloud services and no accounts.
 
-> **Build status: Phase 0 + Phase 1 complete.**
-> Uploads are streamed to disk, validated with `ffprobe`, persisted in SQLite, and processed by a single background worker. Transcription, AI moment selection, speaker tracking, captions, and 9:16 rendering are **not implemented yet**.
+> **Build status: Phase 0 + Phase 1 + Phase 2 complete.**
+> Uploads are streamed to disk, validated with `ffprobe`, persisted in SQLite, and processed by a single background worker. The worker now extracts audio with FFmpeg and transcribes it locally with faster-whisper, storing a timestamped transcript. AI moment selection, speaker tracking, captions, and 9:16 rendering are **not implemented yet**.
 
 ## What works today
 
 - Typed configuration from `.env` files and environment variables
-- Health endpoint reporting database, `ffmpeg`, and `ffprobe` availability
+- Health endpoint reporting database, `ffmpeg`, `ffprobe`, and faster-whisper availability
 - Streamed, chunked uploads written straight to disk (never buffered fully in memory)
 - Immediate `ffprobe` validation: extension, size, readability, video stream, duration, codec
 - Persistent jobs in SQLite with monotonic progress and stage messages
 - Single worker that claims the oldest queued job and recovers interrupted jobs on startup
-- Minimal Next.js UI: drag/drop upload, upload progress, live job status polling, error states
-- Metadata exposed over the API; clip list endpoint returns `[]` for now
+- Local CPU/INT8 transcription with faster-whisper, including word-level timestamps
+- Graceful handling of silent audio and videos with no audio stream (empty transcript, job still completes)
+- Minimal Next.js UI: drag/drop upload, upload progress, live job status polling, transcript summary, error states
+- Metadata and transcript exposed over the API; clip list endpoint returns `[]` for now
+
+Captions are intentionally **not** generated or burned into any video. The transcript is internal pipeline data for later phases.
 
 ## Repository layout
 
@@ -22,16 +26,16 @@ Local-first AI video clipping. Long recordings go in; short vertical clips come 
 clipforge/
 ├── backend/
 │   ├── app/
-│   │   ├── api/          # health, upload, job routes + error/dep helpers
+│   │   ├── api/          # health, upload, job/transcript routes + error/dep helpers
 │   │   ├── models/       # SQLAlchemy Job and Clip models
-│   │   ├── schemas/      # Pydantic response models
-│   │   ├── services/     # ffprobe probing, tool availability
+│   │   ├── schemas/      # Pydantic response and transcript models
+│   │   ├── services/     # ffprobe probing, tool checks, transcription
 │   │   ├── utils/        # config-independent helpers (files, paths, subprocess)
-│   │   ├── worker/       # queue runner and Phase 1 pipeline
+│   │   ├── worker/       # queue runner and inspection/transcription pipeline
 │   │   ├── config.py     # typed settings
-│   │   ├── db.py         # engine, sessions, schema creation
+│   │   ├── db.py         # engine, sessions, schema creation + additive migrations
 │   │   └── main.py       # FastAPI app + lifespan
-│   ├── tests/            # 42 pytest tests
+│   ├── tests/            # 68 pytest tests
 │   ├── data/             # runtime only, gitignored
 │   ├── requirements.lock.txt
 │   ├── pyproject.toml
@@ -53,6 +57,7 @@ clipforge/
 | Node.js | 20+ (26 used) | Frontend build |
 | FFmpeg / ffprobe | 9.0.2 | Must be on `PATH` or set `FFMPEG_BIN` / `FFPROBE_BIN` |
 | Ollama | not used yet | Only needed from Phase 3 onward |
+| Whisper model | downloaded on first use | Cached under `backend/data/models` |
 
 ## Setup
 
@@ -74,6 +79,8 @@ FFPROBE_BIN=C:/ffmpeg-9.0.2-essentials_build/bin/ffprobe.exe
 ```
 
 A locked, fully resolved dependency list lives in `backend/requirements.lock.txt`.
+
+The first transcription downloads the configured Whisper model into `WHISPER_MODEL_DIR` (default `backend/data/models`). This needs internet access once; later runs work offline. For a fast smoke test, set `WHISPER_MODEL=tiny`. The default is `small`, which is larger and slower on CPU.
 
 ### Frontend
 
@@ -131,8 +138,17 @@ Relative paths resolve against `backend/`, not the current shell directory.
 | `FFPROBE_TIMEOUT_SECONDS` | `60` | Probe timeout |
 | `WORKER_AUTOSTART` | `true` | Start worker with the API |
 | `WORKER_POLL_INTERVAL_SECONDS` | `1.0` | Queue polling interval |
+| `WHISPER_MODEL` | `small` | faster-whisper model name (`tiny`, `base`, `small`, …) |
+| `WHISPER_DEVICE` | `cpu` | Inference device |
+| `WHISPER_COMPUTE_TYPE` | `int8` | Quantization; CPU-friendly default |
+| `WHISPER_CPU_THREADS` | `4` | CPU inference threads |
+| `WHISPER_MODEL_DIR` | `./data/models` | Local model cache (gitignored) |
+| `WHISPER_LANGUAGE` | empty | Force a language, or empty to auto-detect |
+| `WHISPER_BEAM_SIZE` | `5` | Decoding beam width |
+| `WHISPER_VAD_FILTER` | `true` | Drop non-speech audio before decoding |
+| `AUDIO_EXTRACT_TIMEOUT_SECONDS` | `3600` | FFmpeg audio-extraction timeout |
 
-Later-phase settings (`OLLAMA_*`, `WHISPER_*`, clip length limits, output dimensions, face sampling) are already defined and validated but unused. Output dimensions must be an even portrait 9:16 ratio; clip minimum must be below maximum.
+Later-phase settings (`OLLAMA_*`, clip length limits, output dimensions, face sampling) are already defined and validated but unused. Output dimensions must be an even portrait 9:16 ratio; clip minimum must be below maximum.
 
 ## API
 
@@ -140,8 +156,9 @@ Later-phase settings (`OLLAMA_*`, `WHISPER_*`, clip length limits, output dimens
 | --- | --- | --- |
 | `GET` | `/api/health` | Dependency status and upload limits |
 | `POST` | `/api/jobs` | Multipart upload (`file`), validates and queues |
-| `GET` | `/api/jobs/{id}` | Job state, progress, media metadata |
-| `GET` | `/api/jobs/{id}/clips` | Clips for a job; `[]` in Phase 1 |
+| `GET` | `/api/jobs/{id}` | Job state, progress, media metadata, transcript summary |
+| `GET` | `/api/jobs/{id}/transcript` | Timestamped transcript JSON (internal pipeline data) |
+| `GET` | `/api/jobs/{id}/clips` | Clips for a job; `[]` in Phase 2 |
 
 Errors use a consistent shape:
 
@@ -149,25 +166,51 @@ Errors use a consistent shape:
 { "detail": { "code": "unsupported_file_type", "message": "Unsupported file type. Upload one of: .mp4, .mov, .mkv." } }
 ```
 
-Status codes: `400 empty_file`, `404 job_not_found`, `413 file_too_large`, `415 unsupported_file_type`, `422` (`unreadable_media`, `no_video_stream`, `unsupported_video_codec`, `invalid_dimensions`, `duration_unknown`), `503 media_tools_unavailable`.
+Status codes: `400 empty_file`, `404 job_not_found`, `404 transcript_not_found`, `413 file_too_large`, `415 unsupported_file_type`, `422` (`unreadable_media`, `no_video_stream`, `unsupported_video_codec`, `invalid_dimensions`, `duration_unknown`), `503 media_tools_unavailable`.
 
-### Job states
+### Job states and progress
 
-`queued → inspecting → completed | failed`
+`queued → inspecting → transcribing → completed | failed`
 
-The remaining states (`transcribing`, `selecting_clips`, `tracking_speakers`, `rendering`, `cancelled`) exist in the enum so later phases and clients do not need a schema change. Phase 1 stops at `completed` with progress `100` and the message “Source validated. Automatic clip generation is not enabled in this build phase.”
+Progress is monotonic: `5` on inspection, `15` when audio preparation starts, `20–95` during transcription, `98` while the transcript is saved, and `100` on completion. A job with silent audio or no audio stream still completes with an empty transcript and `has_speech=false`. The remaining states (`selecting_clips`, `tracking_speakers`, `rendering`, `cancelled`) exist in the enum so later phases and clients do not need a schema change.
+
+### Transcript format
+
+`GET /api/jobs/{id}/transcript` returns:
+
+```json
+{
+  "language": "en",
+  "language_probability": 0.99,
+  "duration": 12.16,
+  "model": "small",
+  "has_speech": true,
+  "created_at": "2026-01-01T00:00:00Z",
+  "segments": [
+    {
+      "start": 0.0,
+      "end": 2.28,
+      "text": "This is a test recording.",
+      "words": [{ "start": 0.0, "end": 0.32, "text": "This" }]
+    }
+  ]
+}
+```
+
+Timestamps are absolute seconds relative to the source video, never re-based to a clip. Invalid or non-finite ranges are dropped, timestamps are clamped to the source duration, and non-speech markers such as `[Music]` are filtered out.
 
 ## Storage
 
 ```
 backend/data/
 ├── clipforge.db                 # SQLite (WAL mode)
+├── models/                      # faster-whisper model cache (gitignored)
 ├── uploads/<job-uuid>/source.mp4
-├── work/<job-uuid>/             # reserved for later phases
+├── work/<job-uuid>/transcript.json
 └── clips/<job-uuid>/            # reserved for later phases
 ```
 
-Paths are derived from the job UUID only. The original filename is stored as display metadata and sanitized; it is never used to build a filesystem path. Stored relative paths are checked against `DATA_DIR` before use.
+During transcription, FFmpeg writes `work/<job-uuid>/audio.wav` (16 kHz mono PCM). It is deleted after transcription; only `transcript.json` remains. Paths are derived from the job UUID only. The original filename is stored as display metadata and sanitized; it is never used to build a filesystem path. Stored relative paths are checked against `DATA_DIR` before use.
 
 ## Tests
 
@@ -176,7 +219,7 @@ cd backend
 .\.venv\Scripts\python.exe -m pytest
 ```
 
-Coverage includes: config path/ratio/extension validation, filename sanitization and traversal protection, streamed write limits, ffprobe parsing and failure codes, health responses, upload rejection paths, job persistence across app restarts, empty clip lists, worker queue claims, monotonic progress, and interrupted-job recovery.
+Coverage includes: config path/ratio/extension validation, filename sanitization and traversal protection, streamed write limits, ffprobe parsing and failure codes, health responses, upload rejection paths, job persistence across app restarts, empty clip lists, worker queue claims, monotonic progress, interrupted-job recovery, transcript range clamping, non-speech filtering, atomic transcript round-trips, audio extraction, the no-speech and no-audio-stream paths, transcription failure handling, and transcript endpoint responses. Unit tests inject a stub transcriber or fake Whisper model, so they never download weights.
 
 Frontend verification:
 
@@ -187,16 +230,22 @@ npm.cmd run build
 
 ### Live checks performed
 
-- `POST /api/jobs` with a 4 s 640×360 H.264/AAC sample → `202`, job queued, worker reached `completed` / `100`
-- `GET /api/jobs/{id}/clips` → `[]`
-- Corrupt `.mp4` → `422 unreadable_media`; `.txt` → `415 unsupported_file_type`; unknown UUID → `404 job_not_found`
-- Files stored at `uploads/<uuid>/source.mp4`; SQLite row confirms UUID id, relative `stored_path`, and metadata
+- `POST /api/jobs` with a 12.16 s 640×360 H.264/AAC speech sample → `202`; job reached `completed` / `100`
+- `WHISPER_MODEL=tiny` on CPU/INT8 detected `en` with probability 0.999 and produced 3 segments / 20 words with absolute word timestamps
+- `GET /api/jobs/{id}/transcript` returned the same data stored in `work/<uuid>/transcript.json`
+- `audio.wav` was removed after transcription; no subtitle/caption files were produced
+- Peak observed backend working set during tiny-model transcription: about 232 MB
+- Silent 5 s video → `completed` with `has_speech=false`, empty segments, and a clear stage message
+- Video with no audio stream → `completed` with `has_speech=false`, `audio_codec=null`, empty segments
+- `GET /api/jobs/{id}/clips` → `[]`; corrupt `.mp4` → `422 unreadable_media`; `.txt` → `415 unsupported_file_type`; unknown UUID → `404 job_not_found`
 
 ## Current limitations
 
-- No transcription, moment selection, speaker tracking, captions, music, branding, or rendering
+- No moment selection, speaker tracking, captions, music, branding, or 9:16 rendering yet
+- CPU-only transcription by default; long videos are slow, and `small` is much slower than `tiny`
+- The first transcription of a model requires internet access and enough disk space
+- One job is processed at a time; the UI uploads one file at a time
 - No job cancellation/deletion endpoint (planned for a later phase)
 - Upload is validated synchronously; very large files hold the request open until probing finishes
-- Single-process worker only, by design for local use
-- One upload at a time in the UI; no resume/chunked retry of interrupted uploads
 - Uploaded originals are never cleaned up automatically
+- Transcripts are stored and exposed as JSON, but the UI only shows a summary, not the full text

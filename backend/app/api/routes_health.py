@@ -9,7 +9,7 @@ from sqlalchemy import text
 
 from app.config import Settings
 from app.schemas.health import HealthCheck, HealthLimits, HealthResponse
-from app.services.tooling import check_media_tools
+from app.services.tooling import check_media_tools, check_whisper
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["health"])
@@ -42,6 +42,16 @@ def health(request: Request) -> HealthResponse:
             version=check.version,
             detail=check.detail,
         )
+
+    whisper = getattr(request.app.state, "whisper_check", None)
+    if whisper is None:
+        whisper = check_whisper(settings)
+        request.app.state.whisper_check = whisper
+    checks["whisper"] = HealthCheck(
+        available=whisper.available,
+        version=whisper.version,
+        detail=whisper.detail,
+    )
 
     healthy = all(check.available for check in checks.values())
     return HealthResponse(

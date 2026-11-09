@@ -27,6 +27,10 @@ export interface Job {
   has_audio: boolean;
   container_format: string | null;
   frame_rate: number | null;
+  has_transcript: boolean;
+  transcript_language: string | null;
+  transcript_segment_count: number | null;
+  has_speech: boolean | null;
   created_at: string;
   updated_at: string;
   started_at: string | null;

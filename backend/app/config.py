@@ -65,6 +65,12 @@ class Settings(BaseSettings):
     whisper_device: str = "cpu"
     whisper_compute_type: str = "int8"
     whisper_cpu_threads: int = Field(default=4, ge=1)
+    whisper_model_dir: Path = Path("./data/models")
+    # None means auto-detect the spoken language.
+    whisper_language: str | None = None
+    whisper_beam_size: int = Field(default=5, ge=1, le=10)
+    whisper_vad_filter: bool = True
+    audio_extract_timeout_seconds: float = Field(default=3600.0, gt=0)
 
     # Ollama (Phase 3)
     ollama_base_url: str = "http://localhost:11434"
@@ -91,6 +97,29 @@ class Settings(BaseSettings):
         if not value.is_absolute():
             value = BACKEND_DIR / value
         return value.resolve()
+
+    @field_validator("whisper_model_dir")
+    @classmethod
+    def _resolve_model_dir(cls, value: Path) -> Path:
+        if not value.is_absolute():
+            value = BACKEND_DIR / value
+        return value.resolve()
+
+    @field_validator("whisper_model")
+    @classmethod
+    def _normalize_whisper_model(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("WHISPER_MODEL must not be empty.")
+        return cleaned
+
+    @field_validator("whisper_language")
+    @classmethod
+    def _normalize_whisper_language(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip().lower()
+        return cleaned or None
 
     @field_validator("database_url")
     @classmethod

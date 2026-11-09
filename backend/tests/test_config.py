@@ -57,3 +57,18 @@ def test_clip_duration_range_is_validated():
 def test_upload_limit_must_be_positive():
     with pytest.raises(ValidationError):
         _valid_settings(max_upload_bytes=0)
+
+
+def test_whisper_model_dir_resolves_against_backend_directory():
+    settings = _valid_settings()
+    assert settings.whisper_model_dir == (BACKEND_DIR / "data" / "models").resolve()
+
+
+def test_whisper_language_is_normalized():
+    assert _valid_settings(whisper_language=" EN ").whisper_language == "en"
+    assert _valid_settings(whisper_language="").whisper_language is None
+
+
+def test_empty_whisper_model_is_rejected():
+    with pytest.raises(ValidationError):
+        _valid_settings(whisper_model="   ")

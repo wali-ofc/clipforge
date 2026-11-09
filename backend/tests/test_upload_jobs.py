@@ -113,8 +113,105 @@ def test_valid_upload_creates_queued_job_and_worker_completes(client, sample_vid
     assert completed["height"] == 240
     assert completed["video_codec"] == "h264"
     assert completed["has_audio"] is True
-    assert "not enabled" in completed["stage_message"]
+    assert "Transcription complete" in completed["stage_message"]
     assert completed["completed_at"] is not None
+    assert completed["has_transcript"] is True
+    assert completed["transcript_language"] == "en"
+    assert completed["transcript_segment_count"] == 2
+    assert completed["has_speech"] is True
+
+    transcript_path = settings.work_dir / job_id / "transcript.json"
+    assert transcript_path.is_file()
+    assert not (settings.work_dir / job_id / "audio.wav").exists()
+
+    transcript_response = client.get(f"/api/jobs/{job_id}/transcript")
+    assert transcript_response.status_code == 200
+    transcript = transcript_response.json()
+    assert transcript["language"] == "en"
+    assert transcript["model"] == "stub"
+    assert transcript["has_speech"] is True
+    assert len(transcript["segments"]) == 2
+    for segment in transcript["segments"]:
+        assert 0 <= segment["start"] < segment["end"] <= completed["duration_seconds"]
+        for word in segment["words"]:
+            assert segment["start"] <= word["start"] < word["end"] <= segment["end"]
+
+
+def test_worker_marks_no_speech_transcript_completed(
+    no_speech_client, sample_video
+):
+    response = _upload(no_speech_client, sample_video)
+    assert response.status_code == 202
+    job_id = response.json()["id"]
+
+    worker = no_speech_client.app.state.worker
+    assert worker.run_once() is True
+
+    detail = no_speech_client.get(f"/api/jobs/{job_id}")
+    assert detail.status_code == 200
+    payload = detail.json()
+    assert payload["state"] == "completed"
+    assert payload["progress"] == 100
+    assert payload["has_transcript"] is True
+    assert payload["has_speech"] is False
+    assert payload["transcript_segment_count"] == 0
+    assert "No useful speech" in payload["stage_message"]
+
+    transcript = no_speech_client.get(f"/api/jobs/{job_id}/transcript")
+    assert transcript.status_code == 200
+    body = transcript.json()
+    assert body["has_speech"] is False
+    assert body["segments"] == []
+    assert body["language"] is None
+
+
+def test_worker_skips_transcription_without_audio_stream(client, video_without_audio):
+    response = _upload(client, video_without_audio)
+    assert response.status_code == 202
+    job_id = response.json()["id"]
+
+    worker = client.app.state.worker
+    assert worker.run_once() is True
+
+    detail = client.get(f"/api/jobs/{job_id}")
+    assert detail.status_code == 200
+    payload = detail.json()
+    assert payload["state"] == "completed"
+    assert payload["progress"] == 100
+    assert payload["has_audio"] is False
+    assert payload["audio_codec"] is None
+    assert payload["has_transcript"] is True
+    assert payload["has_speech"] is False
+    assert payload["transcript_language"] is None
+    assert payload["transcript_segment_count"] == 0
+
+    transcript = client.get(f"/api/jobs/{job_id}/transcript")
+    assert transcript.status_code == 200
+    body = transcript.json()
+    assert body["has_speech"] is False
+    assert body["segments"] == []
+    assert body["language"] is None
+
+
+def test_worker_marks_transcription_failure(failing_client, sample_video):
+    response = _upload(failing_client, sample_video)
+    assert response.status_code == 202
+    job_id = response.json()["id"]
+
+    worker = failing_client.app.state.worker
+    assert worker.run_once() is True
+
+    detail = failing_client.get(f"/api/jobs/{job_id}")
+    assert detail.status_code == 200
+    payload = detail.json()
+    assert payload["state"] == "failed"
+    assert payload["stage_message"] == "Transcription failed"
+    assert payload["error"] == "Simulated transcription failure."
+    assert payload["has_transcript"] is False
+
+    missing = failing_client.get(f"/api/jobs/{job_id}/transcript")
+    assert missing.status_code == 404
+    assert missing.json()["detail"]["code"] == "transcript_not_found"
 
 
 def test_job_record_survives_app_restart(settings: Settings, sample_video):

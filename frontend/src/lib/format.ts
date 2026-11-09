@@ -66,7 +66,7 @@ const STATE_LABELS: Record<JobState, string> = {
   selecting_clips: "Selecting moments",
   tracking_speakers: "Tracking speakers",
   rendering: "Rendering clips",
-  completed: "Validated",
+  completed: "Completed",
   failed: "Failed",
   cancelled: "Cancelled",
 };
