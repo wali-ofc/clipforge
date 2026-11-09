@@ -31,10 +31,34 @@ export interface Job {
   transcript_language: string | null;
   transcript_segment_count: number | null;
   has_speech: boolean | null;
+  clip_count: number;
+  clip_selection_model: string | null;
   created_at: string;
   updated_at: string;
   started_at: string | null;
   completed_at: string | null;
+}
+
+export interface Clip {
+  id: string;
+  job_id: string;
+  start_seconds: number;
+  end_seconds: number;
+  duration_seconds: number;
+  title: string;
+  hook: string | null;
+  reason: string | null;
+  score: number | null;
+  component_scores: Record<string, number | string | Record<string, number>>;
+  output_filename: string | null;
+  width: number | null;
+  height: number | null;
+  speaker_tracking_status: string;
+  speaker_tracking_confidence: number | null;
+  render_status: string;
+  error: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface HealthCheck {

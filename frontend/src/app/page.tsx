@@ -27,7 +27,7 @@ const features = [
 const pipeline = [
   { label: "Upload", note: "live", active: true },
   { label: "Transcribe", note: "live", active: true },
-  { label: "Select moments", note: "next", active: false },
+  { label: "Select moments", note: "live", active: true },
   { label: "Track & render", note: "next", active: false },
 ];
 
@@ -45,7 +45,7 @@ export default function HomePage() {
           <div className="reveal lg:pt-7">
             <div className="inline-flex items-center gap-2 rounded-full border border-forge-500/20 bg-forge-500/[0.06] px-3 py-1.5 text-[11px] font-medium text-forge-200">
               <span className="status-dot h-1.5 w-1.5 rounded-full bg-forge-400" />
-              Phase 2 · local transcription
+              Phase 3 · AI clip selection
             </div>
 
             <h1 className="mt-6 text-balance text-[2.7rem] font-semibold leading-[1.02] tracking-[-0.045em] text-zinc-50 sm:text-6xl">
@@ -63,8 +63,9 @@ export default function HomePage() {
             </p>
             <p className="mt-3 max-w-lg text-sm leading-6 text-zinc-500">
               This build validates your upload, transcribes the audio locally
-              with Whisper, and stores timestamped text. AI moment selection,
-              speaker tracking, and rendering arrive in the next phases.
+              with Whisper, then asks a local Ollama model for self-contained
+              moments. Candidate clips are scored heuristically; speaker
+              tracking and rendering arrive in the next phases.
             </p>
 
             <dl className="mt-8 grid gap-3 sm:grid-cols-3">

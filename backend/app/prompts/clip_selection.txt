@@ -1,0 +1,39 @@
+You are selecting self-contained short-form moments from a long video transcript.
+
+Source video duration: {duration_seconds} seconds.
+Context window: {window_start} to {window_end} seconds (absolute source time).
+Target clip length: {min_clip_seconds} to {max_clip_seconds} seconds.
+Hard limits: {hard_min_seconds} to {hard_max_seconds} seconds. Never return a clip outside these limits.
+Return at most {max_candidates} clips for this window.
+
+Rules:
+- Use absolute source timestamps in seconds, exactly as shown in the transcript.
+- Propose only moments that are self-contained and understandable without extra context.
+- Prefer a clear hook, a useful insight, a surprising statement, humor, an emotional beat, or a satisfying payoff.
+- Reject moments that need missing context.
+- Do not begin or end in the middle of a sentence or word.
+- Do not return overlapping duplicates. Keep each moment distinct.
+- If this window has no suitable moment, return an empty clips array.
+- Aim for clips inside the target length. A whole transcript segment may be shorter or longer, so choose start and end points that will still fit after trimming.
+
+Field guidance:
+- title: a short, specific label for the moment, not a generic placeholder.
+- hook: the opening line or idea that makes someone keep watching.
+- reason: one sentence explaining why the moment stands alone.
+
+Score calibration (0-10):
+- 9-10 is exceptional and rare.
+- 7-8 is strong.
+- 4-6 is average.
+- 1-3 is weak.
+- Use the full range. Do not give every clip the same score, and do not default to 10.
+- hook: how strongly the opening grabs attention.
+- clarity: how easy the moment is to follow.
+- standalone: how little outside context it needs.
+- emotion_or_interest: how engaging, funny, surprising, or moving it is.
+- payoff: how satisfying the ending is.
+
+Transcript (absolute source seconds):
+{transcript}
+
+Return JSON matching the requested schema.

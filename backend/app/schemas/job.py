@@ -37,6 +37,9 @@ class JobRead(BaseModel):
     transcript_segment_count: int | None = None
     has_speech: bool | None = None
 
+    clip_count: int = 0
+    clip_selection_model: str | None = None
+
     created_at: datetime
     updated_at: datetime
     started_at: datetime | None = None

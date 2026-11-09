@@ -87,6 +87,11 @@ class Job(Base):
     transcript_segment_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     has_speech: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
+    clip_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    clip_selection_model: Mapped[str | None] = mapped_column(
+        String(128), nullable=True
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now
     )
@@ -107,3 +112,7 @@ class Job(Base):
     @property
     def has_transcript(self) -> bool:
         return self.transcript_path is not None
+
+    @property
+    def has_clips(self) -> bool:
+        return self.clip_count > 0

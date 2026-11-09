@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import Settings
 from app.models.job import ACTIVE_JOB_STATES, Job, JobState
+from app.services.clip_selection import ClipSelector
 from app.services.transcription import Transcriber
 from app.utils.time import utc_now
 from app.worker.pipeline import claim_next_queued_job, process_job
@@ -54,10 +55,12 @@ class JobWorker:
         settings: Settings,
         session_factory: sessionmaker[Session],
         transcriber: Transcriber | None = None,
+        selector: ClipSelector | None = None,
     ) -> None:
         self.settings = settings
         self.session_factory = session_factory
         self.transcriber = transcriber
+        self.selector = selector
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
         self._run_once_guard = threading.Lock()
@@ -108,5 +111,11 @@ class JobWorker:
                 if job is None:
                     return False
                 logger.info("Worker claimed job %s", job.id)
-                process_job(session, job, self.settings, self.transcriber)
+                process_job(
+                    session,
+                    job,
+                    self.settings,
+                    self.transcriber,
+                    self.selector,
+                )
                 return True

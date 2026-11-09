@@ -12,7 +12,7 @@ import {
   SpinnerIcon,
   XIcon,
 } from "@/components/icons";
-import { ApiError, getJob } from "@/lib/api";
+import { ApiError, getJob, getJobClips } from "@/lib/api";
 import {
   formatBytes,
   formatDate,
@@ -22,7 +22,7 @@ import {
   isTerminalState,
   stateLabel,
 } from "@/lib/format";
-import type { Job, JobState } from "@/types/job";
+import type { Clip, Job, JobState } from "@/types/job";
 
 function badgeClasses(state: JobState): string {
   if (state === "completed") {
@@ -86,6 +86,66 @@ function Detail({
   );
 }
 
+function ClipCard({ clip, index }: { clip: Clip; index: number }) {
+  const score = clip.score == null ? null : Math.round(clip.score);
+  const tone =
+    score == null
+      ? "border-white/10 bg-white/[0.03] text-zinc-400"
+      : score >= 75
+        ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-200"
+        : score >= 55
+          ? "border-forge-500/25 bg-forge-500/10 text-forge-200"
+          : "border-amber-400/20 bg-amber-400/10 text-amber-200";
+
+  return (
+    <article className="rounded-xl border border-white/[0.07] bg-white/[0.018] p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-600">
+            Candidate {String(index + 1).padStart(2, "0")}
+          </p>
+          <h3 className="mt-1.5 text-sm font-semibold leading-5 text-zinc-100">
+            {clip.title}
+          </h3>
+        </div>
+        <span
+          className={[
+            "shrink-0 rounded-lg border px-2.5 py-1 font-mono text-[11px] font-semibold",
+            tone,
+          ].join(" ")}
+          title="Heuristic clip potential, not a virality prediction"
+        >
+          {score == null ? "—" : score}
+          <span className="ml-0.5 text-[9px] font-normal opacity-70">/100</span>
+        </span>
+      </div>
+
+      {clip.hook ? (
+        <p className="mt-2.5 text-xs leading-5 text-zinc-300">{clip.hook}</p>
+      ) : null}
+      {clip.reason ? (
+        <p className="mt-1.5 text-[11px] leading-5 text-zinc-500">
+          {clip.reason}
+        </p>
+      ) : null}
+
+      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 font-mono text-[10px] text-zinc-500">
+        <span>
+          {formatDuration(clip.start_seconds)} – {formatDuration(clip.end_seconds)}
+        </span>
+        <span>{formatDuration(clip.duration_seconds)} long</span>
+        <span className="text-zinc-600">
+          {clip.start_seconds.toFixed(1)}s – {clip.end_seconds.toFixed(1)}s
+        </span>
+      </div>
+
+      <p className="mt-3 border-t border-white/[0.05] pt-2.5 text-[10px] leading-4 text-zinc-600">
+        Heuristic clip potential · speaker tracking and 9:16 rendering pending
+      </p>
+    </article>
+  );
+}
+
 function Skeleton() {
   return (
     <div className="space-y-5" aria-hidden="true">
@@ -134,6 +194,49 @@ export function JobStatusView({ jobId }: { jobId: string }) {
   const [notFound, setNotFound] = useState(false);
   const [retryNonce, setRetryNonce] = useState(0);
   const [copied, setCopied] = useState(false);
+  const [clips, setClips] = useState<Clip[]>([]);
+  const [clipsError, setClipsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!job || job.clip_count <= 0) {
+      setClips([]);
+      setClipsError(null);
+      return;
+    }
+
+    let cancelled = false;
+    const controller = new AbortController();
+
+    getJobClips(jobId, controller.signal)
+      .then((data) => {
+        if (cancelled) {
+          return;
+        }
+        setClips(data);
+        setClipsError(null);
+      })
+      .catch((requestError) => {
+        if (cancelled) {
+          return;
+        }
+        if (
+          requestError instanceof DOMException &&
+          requestError.name === "AbortError"
+        ) {
+          return;
+        }
+        setClipsError(
+          requestError instanceof Error
+            ? requestError.message
+            : "Could not load clip candidates.",
+        );
+      });
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [job?.clip_count, jobId, retryNonce]);
 
   useEffect(() => {
     let cancelled = false;
@@ -236,7 +339,7 @@ export function JobStatusView({ jobId }: { jobId: string }) {
           <span aria-hidden="true">←</span> Upload another video
         </Link>
         <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-700">
-          Phase 2 · transcription
+          Phase 3 · clip selection
         </span>
       </div>
 
@@ -371,15 +474,52 @@ export function JobStatusView({ jobId }: { jobId: string }) {
                   <h2 className="text-sm font-semibold text-forge-200">
                     {job.has_speech === false
                       ? "No useful speech found"
-                      : "Transcription complete"}
+                      : job.clip_count > 0
+                        ? "Clip candidates ready"
+                        : "No candidate clips found"}
                   </h2>
                   <p className="mt-1 text-sm leading-6 text-forge-200/65">
                     {job.has_speech === false
-                      ? "The audio was processed but produced no usable speech segments. The empty transcript is stored so later phases can fall back to non-speech clip selection."
-                      : "The transcript is stored locally with absolute, word-level timestamps. AI moment selection, speaker tracking, and 9:16 rendering arrive in the next phases."}
+                      ? "The audio was processed but produced no usable speech segments. No clips were selected; speaker tracking and rendering are not enabled."
+                      : job.clip_count > 0
+                        ? `${job.clip_count} candidate moment${job.clip_count === 1 ? "" : "s"} selected with ${job.clip_selection_model ?? "the local model"}. Scores are heuristic clip potential, not virality predictions. Speaker tracking and 9:16 rendering arrive in the next phases.`
+                        : "The transcript was processed, but no self-contained moment fit the configured duration range. Try a longer recording or adjust the clip limits."}
                   </p>
                 </div>
               </div>
+            </section>
+          ) : null}
+
+          {job.clip_count > 0 ? (
+            <section className="rounded-2xl border border-white/10 bg-surface-900/60 p-5 sm:p-6">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">
+                  Candidate clips
+                </h2>
+                <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-700">
+                  {job.clip_selection_model ?? "local model"} · heuristic score
+                </span>
+              </div>
+
+              {clipsError ? (
+                <p className="rounded-lg border border-amber-400/20 bg-amber-400/[0.05] px-3 py-2 text-xs text-amber-100">
+                  {clipsError}
+                </p>
+              ) : clips.length === 0 ? (
+                <p className="text-xs text-zinc-500">Loading clip candidates…</p>
+              ) : (
+                <div className="grid gap-3 lg:grid-cols-2">
+                  {clips.map((clip, index) => (
+                    <ClipCard key={clip.id} clip={clip} index={index} />
+                  ))}
+                </div>
+              )}
+
+              <p className="mt-4 text-[11px] leading-5 text-zinc-600">
+                Clip potential is a deterministic weighted score from hook,
+                clarity, payoff, interest, and conciseness. It is not a viral
+                probability. Rendering and speaker tracking are not enabled yet.
+              </p>
             </section>
           ) : null}
 

@@ -1,21 +1,31 @@
 """Processing pipeline.
 
 Phase 1 validates the uploaded source. Phase 2 extracts audio and produces
-a timestamped transcript in the job's work directory. Later phases will
-continue from the stored transcript.
+a timestamped transcript in the job's work directory. Phase 3 asks a local
+Ollama model for candidate moments, validates and refines them, and stores
+clip proposals. Later phases will continue from those proposals.
 """
 
 from __future__ import annotations
 
 import logging
 import time
+import uuid
 from pathlib import Path
 
+from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
 from app.config import Settings
+from app.models.clip import Clip
 from app.models.job import Job, JobState
 from app.schemas.transcript import Transcript
+from app.services.clip_selection import (
+    ClipCandidate,
+    ClipSelectionError,
+    ClipSelector,
+    OllamaClipSelector,
+)
 from app.services.media_probe import MediaProbeError, probe_media
 from app.services.transcription import (
     FasterWhisperTranscriber,
@@ -23,6 +33,7 @@ from app.services.transcription import (
     TranscriptionError,
     build_transcript,
     save_transcript,
+    unload_whisper_models,
 )
 from app.utils.paths import (
     job_work_dir,
@@ -75,8 +86,9 @@ def process_job(
     job: Job,
     settings: Settings,
     transcriber: Transcriber | None = None,
+    selector: ClipSelector | None = None,
 ) -> None:
-    """Run the Phase 2 inspection + transcription pipeline for a job."""
+    """Run inspection, transcription, and candidate clip selection for a job."""
     job_id = job.id
 
     try:
@@ -123,7 +135,7 @@ def process_job(
                 model=settings.whisper_model,
             )
 
-        apply_progress(job, 98, "Saving transcript", JobState.transcribing)
+        apply_progress(job, 82, "Saving transcript", JobState.transcribing)
         session.commit()
 
         transcript_path = work_dir / "transcript.json"
@@ -133,29 +145,53 @@ def process_job(
         job.transcript_language = transcript.language
         job.transcript_segment_count = len(transcript.segments)
         job.has_speech = transcript.has_speech
+        job.clip_count = 0
+        job.clip_selection_model = None
         job.error = None
+        session.commit()
 
         if transcript.has_speech:
-            language = transcript.language or "unknown language"
-            message = (
-                f"Transcription complete: {len(transcript.segments)} segments "
-                f"in {language}."
+            # Whisper and the local LLM should not both hold memory on a
+            # 16 GB machine. Release the cached Whisper model first.
+            unload_whisper_models()
+            candidates, model_name = _select_clips_with_progress(
+                session,
+                job,
+                settings,
+                transcript,
+                info.duration_seconds,
+                selector,
             )
+            _replace_clips(session, job, candidates)
+            job.clip_selection_model = model_name
+            session.commit()
+
+            if candidates:
+                message = (
+                    f"Clip selection complete: {len(candidates)} candidate "
+                    f"clip(s) proposed by {model_name or 'the selector'}."
+                )
+            else:
+                message = (
+                    "No candidate clips were selected. The transcript may be "
+                    "too short or may not contain self-contained moments."
+                )
         else:
             message = (
                 "No useful speech detected. Transcript saved with no segments; "
-                "clip selection will need a non-speech fallback."
+                "no clips were selected."
             )
 
         apply_progress(job, 100, message, JobState.completed)
         job.completed_at = utc_now()
         session.commit()
         logger.info(
-            "Job %s transcribed: %d segments, language=%s, speech=%s",
+            "Job %s processed: %d segments, language=%s, speech=%s, clips=%d",
             job_id,
             len(transcript.segments),
             transcript.language,
             transcript.has_speech,
+            job.clip_count,
         )
     except MediaProbeError as exc:
         _mark_failed(session, job_id, exc.message, stage="Inspection failed")
@@ -163,6 +199,9 @@ def process_job(
     except TranscriptionError as exc:
         _mark_failed(session, job_id, exc.message, stage="Transcription failed")
         logger.warning("Job %s failed transcription: %s", job_id, exc.message)
+    except ClipSelectionError as exc:
+        _mark_failed(session, job_id, exc.message, stage="Clip selection failed")
+        logger.warning("Job %s failed clip selection: %s", job_id, exc.message)
     except Exception as exc:  # noqa: BLE001 - worker must not crash on one job
         logger.exception("Unexpected error while processing job %s", job_id)
         _mark_failed(
@@ -189,12 +228,12 @@ def _transcribe_with_progress(
         nonlocal last_commit, last_progress
 
         bounded = max(0.0, min(1.0, float(fraction)))
-        progress = 20 + int(round(75 * bounded))
+        progress = 20 + int(round(60 * bounded))
         if progress <= last_progress:
             return
 
         now = time.monotonic()
-        if progress < 95 and now - last_commit < 1.0:
+        if progress < 80 and now - last_commit < 1.0:
             return
 
         apply_progress(
@@ -213,6 +252,78 @@ def _transcribe_with_progress(
         work_dir,
         on_progress=on_progress,
     )
+
+
+def _select_clips_with_progress(
+    session: Session,
+    job: Job,
+    settings: Settings,
+    transcript: Transcript,
+    duration_seconds: float,
+    selector: ClipSelector | None,
+) -> tuple[list[ClipCandidate], str | None]:
+    """Run selection with monotonic progress in the 84-97 range."""
+    active_selector = selector or OllamaClipSelector(settings)
+    model_name = getattr(active_selector, "model_name", None)
+
+    apply_progress(
+        job,
+        84,
+        "Selecting candidate clips",
+        JobState.selecting_clips,
+    )
+    session.commit()
+
+    def on_progress(fraction: float) -> None:
+        bounded = max(0.0, min(1.0, float(fraction)))
+        progress = 84 + int(round(13 * bounded))
+        if progress <= job.progress:
+            return
+        apply_progress(
+            job,
+            progress,
+            f"Selecting candidate clips ({progress}%)",
+            JobState.selecting_clips,
+        )
+        session.commit()
+
+    candidates = active_selector.select(
+        transcript,
+        duration_seconds,
+        on_progress=on_progress,
+    )
+    return candidates, model_name
+
+
+def _replace_clips(
+    session: Session,
+    job: Job,
+    candidates: list[ClipCandidate],
+) -> None:
+    """Replace any previous proposals for this job with the new selection."""
+    session.execute(delete(Clip).where(Clip.job_id == job.id))
+    now = utc_now()
+    for candidate in candidates:
+        session.add(
+            Clip(
+                id=str(uuid.uuid4()),
+                job_id=job.id,
+                start_seconds=candidate.start,
+                end_seconds=candidate.end,
+                duration_seconds=candidate.duration,
+                title=candidate.title[:255],
+                hook=candidate.hook or None,
+                reason=candidate.reason or None,
+                score=candidate.score,
+                component_scores=candidate.component_scores,
+                speaker_tracking_status="pending",
+                render_status="pending",
+                created_at=now,
+                updated_at=now,
+            )
+        )
+    job.clip_count = len(candidates)
+    session.flush()
 
 
 def _mark_failed(session: Session, job_id: str, message: str, *, stage: str) -> None:

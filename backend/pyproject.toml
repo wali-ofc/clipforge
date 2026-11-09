@@ -15,17 +15,20 @@ dependencies = [
   "pydantic-settings==2.16.2",
   "sqlalchemy==2.1.8",
   "faster-whisper==1.2.1",
+  "httpx==0.28.1",
 ]
 
 [project.optional-dependencies]
 dev = [
-  "httpx==0.28.1",
   "pytest==9.2.0",
   "pytest-cov==7.1.0",
 ]
 
 [tool.setuptools.packages.find]
 include = ["app*"]
+
+[tool.setuptools.package-data]
+app = ["prompts/*.txt"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

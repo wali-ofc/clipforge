@@ -10,6 +10,7 @@ internal pipeline data used by later clip-selection phases.
 
 from __future__ import annotations
 
+import gc
 import logging
 import math
 import os
@@ -322,6 +323,7 @@ def unload_whisper_models() -> None:
     """Release cached Whisper models (used before loading the LLM)."""
     with _MODEL_LOCK:
         _MODEL_CACHE.clear()
+    gc.collect()
 
 
 class FasterWhisperTranscriber:

@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from uuid import UUID, uuid4
 
+import pytest
+
 from app.config import Settings
 from app.main import create_app
 from app.models.job import Job
@@ -113,12 +115,14 @@ def test_valid_upload_creates_queued_job_and_worker_completes(client, sample_vid
     assert completed["height"] == 240
     assert completed["video_codec"] == "h264"
     assert completed["has_audio"] is True
-    assert "Transcription complete" in completed["stage_message"]
+    assert "No candidate clips" in completed["stage_message"]
     assert completed["completed_at"] is not None
     assert completed["has_transcript"] is True
     assert completed["transcript_language"] == "en"
     assert completed["transcript_segment_count"] == 2
     assert completed["has_speech"] is True
+    assert completed["clip_count"] == 0
+    assert completed["clip_selection_model"] == "stub-selector"
 
     transcript_path = settings.work_dir / job_id / "transcript.json"
     assert transcript_path.is_file()
@@ -155,6 +159,7 @@ def test_worker_marks_no_speech_transcript_completed(
     assert payload["has_transcript"] is True
     assert payload["has_speech"] is False
     assert payload["transcript_segment_count"] == 0
+    assert payload["clip_count"] == 0
     assert "No useful speech" in payload["stage_message"]
 
     transcript = no_speech_client.get(f"/api/jobs/{job_id}/transcript")
@@ -184,6 +189,7 @@ def test_worker_skips_transcription_without_audio_stream(client, video_without_a
     assert payload["has_speech"] is False
     assert payload["transcript_language"] is None
     assert payload["transcript_segment_count"] == 0
+    assert payload["clip_count"] == 0
 
     transcript = client.get(f"/api/jobs/{job_id}/transcript")
     assert transcript.status_code == 200
@@ -252,3 +258,85 @@ def test_unknown_job_returns_clear_404(client):
 def test_clip_list_for_unknown_job_returns_404(client):
     response = client.get(f"/api/jobs/{uuid4()}/clips")
     assert response.status_code == 404
+
+
+def test_long_video_produces_candidate_clips(client, long_sample_video):
+    response = _upload(client, long_sample_video)
+    assert response.status_code == 202
+    job_id = response.json()["id"]
+
+    worker = client.app.state.worker
+    assert worker.run_once() is True
+
+    detail = client.get(f"/api/jobs/{job_id}")
+    assert detail.status_code == 200
+    payload = detail.json()
+    assert payload["state"] == "completed"
+    assert payload["clip_count"] >= 1
+    assert payload["clip_selection_model"] == "stub-selector"
+    assert "Clip selection complete" in payload["stage_message"]
+
+    clips_response = client.get(f"/api/jobs/{job_id}/clips")
+    assert clips_response.status_code == 200
+    clips = clips_response.json()
+    assert len(clips) == payload["clip_count"]
+
+    clip = clips[0]
+    assert clip["job_id"] == job_id
+    assert 0 <= clip["start_seconds"] < clip["end_seconds"] <= payload["duration_seconds"]
+    assert clip["duration_seconds"] == pytest.approx(
+        clip["end_seconds"] - clip["start_seconds"], abs=0.01
+    )
+    assert 15 <= clip["duration_seconds"] <= 90
+    assert clip["title"] == "Stub moment"
+    assert clip["hook"]
+    assert clip["reason"]
+    assert clip["score"] is not None
+    assert 0 <= clip["score"] <= 100
+    assert {
+        "hook",
+        "clarity",
+        "payoff",
+        "emotion_or_interest",
+        "conciseness",
+        "weights",
+        "method",
+    } <= set(clip["component_scores"])
+    assert clip["render_status"] == "pending"
+    assert clip["speaker_tracking_status"] == "pending"
+
+    metadata = client.get(f"/api/clips/{clip['id']}")
+    assert metadata.status_code == 200
+    assert metadata.json()["id"] == clip["id"]
+
+    file_response = client.get(f"/api/clips/{clip['id']}/file")
+    assert file_response.status_code == 404
+    assert file_response.json()["detail"]["code"] == "clip_not_rendered"
+
+
+def test_worker_marks_selection_failure(failing_selector_client, long_sample_video):
+    response = _upload(failing_selector_client, long_sample_video)
+    assert response.status_code == 202
+    job_id = response.json()["id"]
+
+    worker = failing_selector_client.app.state.worker
+    assert worker.run_once() is True
+
+    detail = failing_selector_client.get(f"/api/jobs/{job_id}")
+    assert detail.status_code == 200
+    payload = detail.json()
+    assert payload["state"] == "failed"
+    assert payload["stage_message"] == "Clip selection failed"
+    assert payload["error"] == "Simulated clip selection failure."
+    assert payload["has_transcript"] is True
+    assert payload["clip_count"] == 0
+
+    clips = failing_selector_client.get(f"/api/jobs/{job_id}/clips")
+    assert clips.status_code == 200
+    assert clips.json() == []
+
+
+def test_unknown_clip_returns_404(client):
+    response = client.get(f"/api/clips/{uuid4()}")
+    assert response.status_code == 404
+    assert response.json()["detail"]["code"] == "clip_not_found"

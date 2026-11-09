@@ -9,7 +9,7 @@ from sqlalchemy import text
 
 from app.config import Settings
 from app.schemas.health import HealthCheck, HealthLimits, HealthResponse
-from app.services.tooling import check_media_tools, check_whisper
+from app.services.tooling import check_media_tools, check_ollama, check_whisper
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["health"])
@@ -51,6 +51,16 @@ def health(request: Request) -> HealthResponse:
         available=whisper.available,
         version=whisper.version,
         detail=whisper.detail,
+    )
+
+    ollama = getattr(request.app.state, "ollama_check", None)
+    if ollama is None:
+        ollama = check_ollama(settings)
+        request.app.state.ollama_check = ollama
+    checks["ollama"] = HealthCheck(
+        available=ollama.available,
+        version=ollama.version,
+        detail=ollama.detail,
     )
 
     healthy = all(check.available for check in checks.values())

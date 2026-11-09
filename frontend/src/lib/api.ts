@@ -1,4 +1,4 @@
-import type { Health, Job } from "@/types/job";
+import type { Clip, Health, Job } from "@/types/job";
 
 export const API_BASE_URL = (
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000"
@@ -133,6 +133,34 @@ export async function getJob(
     );
   }
   return body as Job;
+}
+
+export async function getJobClips(
+  jobId: string,
+  signal?: AbortSignal,
+): Promise<Clip[]> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${API_BASE_URL}/api/jobs/${encodeURIComponent(jobId)}/clips`,
+      { cache: "no-store", signal },
+    );
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw error;
+    }
+    throw networkError();
+  }
+
+  const body = await readJson(response);
+  if (!response.ok) {
+    throw errorFromResponse(
+      response.status,
+      body,
+      `Could not load clips for job ${jobId}.`,
+    );
+  }
+  return body as Clip[];
 }
 
 export function uploadVideo(

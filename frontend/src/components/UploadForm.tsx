@@ -382,9 +382,9 @@ export function UploadForm() {
           1
         </span>
         <p>
-          Phase 2 validates uploads, transcribes speech locally with Whisper,
-          and stores word-level timestamps. Clip generation is not enabled
-          yet.
+          Phase 3 validates uploads, transcribes speech locally with Whisper,
+          and selects candidate moments with a local Ollama model. Clip
+          rendering is not enabled yet.
         </p>
       </div>
     </div>

@@ -76,11 +76,29 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "qwen2.5:3b"
     ollama_timeout_seconds: float = Field(default=180.0, gt=0)
+    ollama_temperature: float = Field(default=0.2, ge=0, le=2)
+    ollama_num_ctx: int = Field(default=8192, ge=1024)
+    ollama_keep_alive: str = "5m"
+    ollama_think: bool = False
 
     # Clip selection (Phase 3)
     min_clip_seconds: float = Field(default=20.0, gt=0)
     max_clip_seconds: float = Field(default=60.0, gt=0)
+    clip_hard_min_seconds: float = Field(default=15.0, gt=0)
+    clip_hard_max_seconds: float = Field(default=90.0, gt=0)
     max_clips: int = Field(default=8, ge=1)
+    clip_window_seconds: float = Field(default=180.0, gt=0)
+    clip_window_overlap_seconds: float = Field(default=30.0, ge=0)
+    clip_max_candidates_per_chunk: int = Field(default=4, ge=1, le=20)
+    clip_score_weights: dict[str, float] = Field(
+        default_factory=lambda: {
+            "hook": 0.25,
+            "clarity": 0.25,
+            "payoff": 0.20,
+            "emotion_or_interest": 0.20,
+            "conciseness": 0.10,
+        }
+    )
 
     # Rendering (Phase 5)
     output_width: int = Field(default=1080, gt=0)
@@ -121,6 +139,55 @@ class Settings(BaseSettings):
         cleaned = value.strip().lower()
         return cleaned or None
 
+    @field_validator("ollama_base_url")
+    @classmethod
+    def _normalize_ollama_url(cls, value: str) -> str:
+        cleaned = value.strip().rstrip("/")
+        if not cleaned:
+            raise ValueError("OLLAMA_BASE_URL must not be empty.")
+        if not cleaned.startswith(("http://", "https://")):
+            raise ValueError("OLLAMA_BASE_URL must start with http:// or https://.")
+        return cleaned
+
+    @field_validator("ollama_model")
+    @classmethod
+    def _normalize_ollama_model(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("OLLAMA_MODEL must not be empty.")
+        return cleaned
+
+    @field_validator("clip_score_weights")
+    @classmethod
+    def _normalize_score_weights(cls, value: dict[str, float]) -> dict[str, float]:
+        expected = {
+            "hook",
+            "clarity",
+            "payoff",
+            "emotion_or_interest",
+            "conciseness",
+        }
+        cleaned = {key: float(weight) for key, weight in value.items()}
+        if set(cleaned) != expected:
+            missing = sorted(expected - set(cleaned))
+            unknown = sorted(set(cleaned) - expected)
+            details = []
+            if missing:
+                details.append(f"missing {', '.join(missing)}")
+            if unknown:
+                details.append(f"unknown {', '.join(unknown)}")
+            raise ValueError(
+                "CLIP_SCORE_WEIGHTS must contain exactly: "
+                + ", ".join(sorted(expected))
+                + (f" ({'; '.join(details)})" if details else "")
+            )
+        if any(weight < 0 for weight in cleaned.values()):
+            raise ValueError("CLIP_SCORE_WEIGHTS values must be non-negative.")
+        total = sum(cleaned.values())
+        if total <= 0:
+            raise ValueError("CLIP_SCORE_WEIGHTS must have a positive total.")
+        return {key: weight / total for key, weight in cleaned.items()}
+
     @field_validator("database_url")
     @classmethod
     def _resolve_database_url(cls, value: str) -> str:
@@ -158,6 +225,21 @@ class Settings(BaseSettings):
     def _validate_domain_settings(self) -> "Settings":
         if self.min_clip_seconds >= self.max_clip_seconds:
             raise ValueError("MIN_CLIP_SECONDS must be less than MAX_CLIP_SECONDS.")
+
+        if self.clip_hard_min_seconds >= self.min_clip_seconds:
+            raise ValueError(
+                "CLIP_HARD_MIN_SECONDS must be less than MIN_CLIP_SECONDS."
+            )
+
+        if self.clip_hard_max_seconds <= self.max_clip_seconds:
+            raise ValueError(
+                "CLIP_HARD_MAX_SECONDS must be greater than MAX_CLIP_SECONDS."
+            )
+
+        if self.clip_window_overlap_seconds >= self.clip_window_seconds:
+            raise ValueError(
+                "CLIP_WINDOW_OVERLAP_SECONDS must be less than CLIP_WINDOW_SECONDS."
+            )
 
         if self.output_width % 2 or self.output_height % 2:
             raise ValueError("OUTPUT_WIDTH and OUTPUT_HEIGHT must be even numbers.")

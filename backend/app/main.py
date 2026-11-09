@@ -9,15 +9,17 @@ from typing import AsyncIterator
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import routes_health, routes_jobs, routes_upload
+from app.api import routes_clips, routes_health, routes_jobs, routes_upload
 from app.config import Settings, get_settings
 from app.db import (
     create_engine_from_settings,
     create_session_factory,
     init_db,
 )
+from app.services.clip_selection import ClipSelector
 from app.services.tooling import (
     check_media_tools,
+    check_ollama,
     check_whisper,
     media_tools_available,
 )
@@ -39,6 +41,7 @@ def _configure_logging(settings: Settings) -> None:
 def create_app(
     settings: Settings | None = None,
     transcriber: Transcriber | None = None,
+    selector: ClipSelector | None = None,
 ) -> FastAPI:
     resolved_settings = settings or get_settings()
 
@@ -75,12 +78,20 @@ def create_app(
                 "Transcription is unavailable: %s", whisper_check.detail
             )
 
+        ollama_check = check_ollama(resolved_settings)
+        app.state.ollama_check = ollama_check
+        if not ollama_check.available:
+            logger.warning(
+                "Clip selection is unavailable: %s", ollama_check.detail
+            )
+
         recover_interrupted_jobs(session_factory)
 
         worker = JobWorker(
             resolved_settings,
             session_factory,
             transcriber=transcriber,
+            selector=selector,
         )
         app.state.worker = worker
         if resolved_settings.worker_autostart:
@@ -118,6 +129,7 @@ def create_app(
     app.include_router(routes_health.router)
     app.include_router(routes_upload.router)
     app.include_router(routes_jobs.router)
+    app.include_router(routes_clips.router)
 
     @app.get("/", include_in_schema=False)
     def root() -> dict[str, str]:

@@ -87,6 +87,8 @@ def _apply_sqlite_additive_migrations(engine: Engine) -> None:
         "transcript_language": "VARCHAR(16)",
         "transcript_segment_count": "INTEGER",
         "has_speech": "BOOLEAN",
+        "clip_count": "INTEGER NOT NULL DEFAULT 0",
+        "clip_selection_model": "VARCHAR(128)",
     }
 
     with engine.begin() as connection:

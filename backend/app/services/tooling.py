@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError, version as package_version
 
 from app.config import Settings
+from app.services.ollama import OllamaClient
 from app.utils.subprocesses import (
     CommandError,
     CommandNotFoundError,
@@ -109,4 +110,47 @@ def check_whisper(settings: Settings) -> ToolCheck:
             f"faster-whisper {installed} · {settings.whisper_device}/"
             f"{settings.whisper_compute_type} · model {settings.whisper_model}"
         ),
+    )
+
+
+def check_ollama(settings: Settings) -> ToolCheck:
+    """Report whether Ollama is reachable and the configured model is present.
+
+    This only calls the lightweight version/tags endpoints; it never loads a
+    model. Clip selection is unavailable until this check passes.
+    """
+    with OllamaClient(settings) as client:
+        probe = client.probe()
+
+    if not probe.reachable:
+        return ToolCheck(
+            name="ollama",
+            command=settings.ollama_model,
+            available=False,
+            detail=probe.detail
+            or (
+                f"Ollama is not reachable at {settings.ollama_base_url}. "
+                "Start it with `ollama serve` and retry."
+            ),
+        )
+
+    if probe.model_available is False:
+        return ToolCheck(
+            name="ollama",
+            command=settings.ollama_model,
+            available=False,
+            detail=probe.detail
+            or (
+                f"Ollama is running but the model '{settings.ollama_model}' is "
+                f"not installed. Run `ollama pull {settings.ollama_model}`."
+            ),
+        )
+
+    version = f"Ollama {probe.version or 'running'} · model {settings.ollama_model}"
+    return ToolCheck(
+        name="ollama",
+        command=settings.ollama_model,
+        available=True,
+        version=version,
+        detail=probe.detail,
     )
