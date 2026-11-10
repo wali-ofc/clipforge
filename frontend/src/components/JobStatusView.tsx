@@ -86,8 +86,46 @@ function Detail({
   );
 }
 
+function trackingLabel(clip: Clip): string {
+  switch (clip.speaker_tracking_status) {
+    case "tracked":
+      return "Speaker-aware tracking";
+    case "single_face":
+      return "Single-face tracking";
+    case "fallback":
+      return "Stable fallback face";
+    case "unavailable":
+      return "Centre crop · tracking unavailable";
+    case "failed":
+      return "Centre crop · tracking failed";
+    case "no_faces":
+      return "No face detected · centre crop";
+    case "no_frames":
+      return "No frames sampled · centre crop";
+    case "pending":
+      return "Tracking pending";
+    default:
+      return clip.speaker_tracking_status;
+  }
+}
+
+function trackingTone(clip: Clip): string {
+  if (clip.speaker_tracking_status === "tracked") {
+    return "border-emerald-400/20 bg-emerald-400/[0.06] text-emerald-200";
+  }
+  if (clip.speaker_tracking_status === "fallback") {
+    return "border-amber-400/20 bg-amber-400/[0.06] text-amber-200";
+  }
+  return "border-white/10 bg-white/[0.03] text-zinc-400";
+}
+
 function ClipCard({ clip, index }: { clip: Clip; index: number }) {
   const score = clip.score == null ? null : Math.round(clip.score);
+  const confidence =
+    clip.speaker_tracking_confidence == null
+      ? null
+      : Math.round(clip.speaker_tracking_confidence * 100);
+  const cropSamples = clip.crop_plan?.samples?.length ?? 0;
   const tone =
     score == null
       ? "border-white/10 bg-white/[0.03] text-zinc-400"
@@ -139,8 +177,28 @@ function ClipCard({ clip, index }: { clip: Clip; index: number }) {
         </span>
       </div>
 
-      <p className="mt-3 border-t border-white/[0.05] pt-2.5 text-[10px] leading-4 text-zinc-600">
-        Heuristic clip potential · speaker tracking and 9:16 rendering pending
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-white/[0.05] pt-2.5">
+        <span
+          className={[
+            "rounded-md border px-1.5 py-0.5 font-mono text-[10px]",
+            trackingTone(clip),
+          ].join(" ")}
+        >
+          {trackingLabel(clip)}
+        </span>
+        {confidence != null ? (
+          <span className="font-mono text-[10px] text-zinc-500">
+            {confidence}% confidence
+          </span>
+        ) : null}
+        {cropSamples > 0 ? (
+          <span className="font-mono text-[10px] text-zinc-600">
+            {cropSamples} crop samples
+          </span>
+        ) : null}
+      </div>
+      <p className="mt-2 text-[10px] leading-4 text-zinc-600">
+        Heuristic clip potential · 9:16 rendering pending
       </p>
     </article>
   );
@@ -339,7 +397,7 @@ export function JobStatusView({ jobId }: { jobId: string }) {
           <span aria-hidden="true">←</span> Upload another video
         </Link>
         <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-700">
-          Phase 3 · clip selection
+          Phase 4 · speaker tracking
         </span>
       </div>
 
@@ -482,7 +540,7 @@ export function JobStatusView({ jobId }: { jobId: string }) {
                     {job.has_speech === false
                       ? "The audio was processed but produced no usable speech segments. No clips were selected; speaker tracking and rendering are not enabled."
                       : job.clip_count > 0
-                        ? `${job.clip_count} candidate moment${job.clip_count === 1 ? "" : "s"} selected with ${job.clip_selection_model ?? "the local model"}. Scores are heuristic clip potential, not virality predictions. Speaker tracking and 9:16 rendering arrive in the next phases.`
+                        ? `${job.clip_count} candidate moment${job.clip_count === 1 ? "" : "s"} selected with ${job.clip_selection_model ?? "the local model"}. Scores are heuristic clip potential, not virality predictions. Speaker-aware crop plans are ready; 9:16 rendering arrives in Phase 5.`
                         : "The transcript was processed, but no self-contained moment fit the configured duration range. Try a longer recording or adjust the clip limits."}
                   </p>
                 </div>
@@ -518,7 +576,10 @@ export function JobStatusView({ jobId }: { jobId: string }) {
               <p className="mt-4 text-[11px] leading-5 text-zinc-600">
                 Clip potential is a deterministic weighted score from hook,
                 clarity, payoff, interest, and conciseness. It is not a viral
-                probability. Rendering and speaker tracking are not enabled yet.
+                probability. Crop plans are sampled only inside each candidate
+                range. When active-speaker confidence is low or a face is
+                missing, the planner uses an explicit stable fallback instead
+                of claiming tracking. Rendering is not enabled yet.
               </p>
             </section>
           ) : null}

@@ -82,21 +82,31 @@ def _apply_sqlite_additive_migrations(engine: Engine) -> None:
     if engine.dialect.name != "sqlite":
         return
 
-    additions: dict[str, str] = {
-        "transcript_path": "VARCHAR(1024)",
-        "transcript_language": "VARCHAR(16)",
-        "transcript_segment_count": "INTEGER",
-        "has_speech": "BOOLEAN",
-        "clip_count": "INTEGER NOT NULL DEFAULT 0",
-        "clip_selection_model": "VARCHAR(128)",
+    additions: dict[str, dict[str, str]] = {
+        "jobs": {
+            "transcript_path": "VARCHAR(1024)",
+            "transcript_language": "VARCHAR(16)",
+            "transcript_segment_count": "INTEGER",
+            "has_speech": "BOOLEAN",
+            "clip_count": "INTEGER NOT NULL DEFAULT 0",
+            "clip_selection_model": "VARCHAR(128)",
+        },
+        "clips": {
+            "crop_plan": "JSON NOT NULL DEFAULT '{}'",
+            "tracking_details": "JSON NOT NULL DEFAULT '{}'",
+        },
     }
 
     with engine.begin() as connection:
-        existing = {
-            row[1] for row in connection.exec_driver_sql("PRAGMA table_info(jobs)")
-        }
-        for column, definition in additions.items():
-            if column not in existing:
-                connection.exec_driver_sql(
-                    f"ALTER TABLE jobs ADD COLUMN {column} {definition}"
+        for table, columns in additions.items():
+            existing = {
+                row[1]
+                for row in connection.exec_driver_sql(
+                    f"PRAGMA table_info({table})"
                 )
+            }
+            for column, definition in columns.items():
+                if column not in existing:
+                    connection.exec_driver_sql(
+                        f"ALTER TABLE {table} ADD COLUMN {column} {definition}"
+                    )

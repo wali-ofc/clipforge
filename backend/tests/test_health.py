@@ -16,6 +16,7 @@ def test_health_responds_with_dependency_checks(client):
         "ffprobe",
         "whisper",
         "ollama",
+        "face_detection",
     }
     assert payload["checks"]["database"]["available"] is True
     assert payload["checks"]["whisper"]["available"] is True

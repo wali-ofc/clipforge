@@ -9,7 +9,12 @@ from sqlalchemy import text
 
 from app.config import Settings
 from app.schemas.health import HealthCheck, HealthLimits, HealthResponse
-from app.services.tooling import check_media_tools, check_ollama, check_whisper
+from app.services.tooling import (
+    check_face_detection,
+    check_media_tools,
+    check_ollama,
+    check_whisper,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["health"])
@@ -61,6 +66,16 @@ def health(request: Request) -> HealthResponse:
         available=ollama.available,
         version=ollama.version,
         detail=ollama.detail,
+    )
+
+    face_detection = getattr(request.app.state, "face_detection_check", None)
+    if face_detection is None:
+        face_detection = check_face_detection(settings)
+        request.app.state.face_detection_check = face_detection
+    checks["face_detection"] = HealthCheck(
+        available=face_detection.available,
+        version=face_detection.version,
+        detail=face_detection.detail,
     )
 
     healthy = all(check.available for check in checks.values())

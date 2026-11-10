@@ -303,7 +303,12 @@ def test_long_video_produces_candidate_clips(client, long_sample_video):
         "method",
     } <= set(clip["component_scores"])
     assert clip["render_status"] == "pending"
-    assert clip["speaker_tracking_status"] == "pending"
+    assert clip["speaker_tracking_status"] == "tracked"
+    assert clip["speaker_tracking_confidence"] == pytest.approx(0.9)
+    assert clip["crop_plan"]["coordinate_space"] == "source_pixels"
+    assert clip["crop_plan"]["time_space"] == "clip_relative_seconds"
+    assert clip["crop_plan"]["samples"]
+    assert clip["tracking_details"]["method"] == "stub"
 
     metadata = client.get(f"/api/clips/{clip['id']}")
     assert metadata.status_code == 200
@@ -312,6 +317,30 @@ def test_long_video_produces_candidate_clips(client, long_sample_video):
     file_response = client.get(f"/api/clips/{clip['id']}/file")
     assert file_response.status_code == 404
     assert file_response.json()["detail"]["code"] == "clip_not_rendered"
+
+
+def test_tracking_failure_keeps_job_and_centres_crop(
+    failing_tracker_client, long_sample_video
+):
+    response = _upload(failing_tracker_client, long_sample_video)
+    assert response.status_code == 202
+    job_id = response.json()["id"]
+
+    worker = failing_tracker_client.app.state.worker
+    assert worker.run_once() is True
+
+    detail = failing_tracker_client.get(f"/api/jobs/{job_id}")
+    assert detail.status_code == 200
+    payload = detail.json()
+    assert payload["state"] == "completed"
+    assert payload["clip_count"] >= 1
+
+    clip = failing_tracker_client.get(f"/api/jobs/{job_id}/clips").json()[0]
+    assert clip["speaker_tracking_status"] == "failed"
+    assert clip["speaker_tracking_confidence"] == 0.0
+    assert clip["crop_plan"]["samples"]
+    assert clip["crop_plan"]["samples"][0]["status"] == "centered"
+    assert clip["tracking_details"]["error_code"] == "tracking_failed"
 
 
 def test_worker_marks_selection_failure(failing_selector_client, long_sample_video):

@@ -26,6 +26,8 @@ class ClipRead(BaseModel):
     height: int | None = None
     speaker_tracking_status: str = "pending"
     speaker_tracking_confidence: float | None = None
+    crop_plan: dict[str, Any] = Field(default_factory=dict)
+    tracking_details: dict[str, Any] = Field(default_factory=dict)
     render_status: str = "pending"
     error: str | None = None
     created_at: datetime

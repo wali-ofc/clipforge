@@ -17,7 +17,9 @@ from app.db import (
     init_db,
 )
 from app.services.clip_selection import ClipSelector
+from app.services.speaker_tracking import SpeakerTracker
 from app.services.tooling import (
+    check_face_detection,
     check_media_tools,
     check_ollama,
     check_whisper,
@@ -42,6 +44,7 @@ def create_app(
     settings: Settings | None = None,
     transcriber: Transcriber | None = None,
     selector: ClipSelector | None = None,
+    speaker_tracker: SpeakerTracker | None = None,
 ) -> FastAPI:
     resolved_settings = settings or get_settings()
 
@@ -85,6 +88,14 @@ def create_app(
                 "Clip selection is unavailable: %s", ollama_check.detail
             )
 
+        face_detection_check = check_face_detection(resolved_settings)
+        app.state.face_detection_check = face_detection_check
+        if not face_detection_check.available:
+            logger.warning(
+                "Speaker tracking will use centred crops: %s",
+                face_detection_check.detail,
+            )
+
         recover_interrupted_jobs(session_factory)
 
         worker = JobWorker(
@@ -92,6 +103,7 @@ def create_app(
             session_factory,
             transcriber=transcriber,
             selector=selector,
+            speaker_tracker=speaker_tracker,
         )
         app.state.worker = worker
         if resolved_settings.worker_autostart:

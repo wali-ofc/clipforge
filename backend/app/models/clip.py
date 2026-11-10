@@ -52,6 +52,12 @@ class Clip(Base):
     speaker_tracking_confidence: Mapped[float | None] = mapped_column(
         Float, nullable=True
     )
+    crop_plan: Mapped[dict[str, Any]] = mapped_column(
+        JSON, nullable=False, default=dict
+    )
+    tracking_details: Mapped[dict[str, Any]] = mapped_column(
+        JSON, nullable=False, default=dict
+    )
     render_status: Mapped[str] = mapped_column(
         String(32), nullable=False, default="pending"
     )

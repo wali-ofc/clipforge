@@ -24,6 +24,7 @@ idna==3.20
 iniconfig==2.3.1
 numpy==2.4.6
 onnxruntime==1.31.1
+opencv-python-headless==4.14.0.94
 opentelemetry-api==1.45.2
 packaging==26.3
 pluggy==1.7.0

@@ -13,7 +13,7 @@ import time
 import uuid
 from pathlib import Path
 
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.config import Settings
@@ -27,6 +27,11 @@ from app.services.clip_selection import (
     OllamaClipSelector,
 )
 from app.services.media_probe import MediaProbeError, probe_media
+from app.services.speaker_tracking import (
+    OpenCVSpeakerTracker,
+    SpeakerTracker,
+    build_centered_result,
+)
 from app.services.transcription import (
     FasterWhisperTranscriber,
     Transcriber,
@@ -87,8 +92,9 @@ def process_job(
     settings: Settings,
     transcriber: Transcriber | None = None,
     selector: ClipSelector | None = None,
+    speaker_tracker: SpeakerTracker | None = None,
 ) -> None:
-    """Run inspection, transcription, and candidate clip selection for a job."""
+    """Run inspection, transcription, selection, and crop planning for a job."""
     job_id = job.id
 
     try:
@@ -167,9 +173,18 @@ def process_job(
             session.commit()
 
             if candidates:
+                _track_clips_with_progress(
+                    session,
+                    job,
+                    settings,
+                    transcript,
+                    source_path,
+                    speaker_tracker,
+                )
                 message = (
                     f"Clip selection complete: {len(candidates)} candidate "
-                    f"clip(s) proposed by {model_name or 'the selector'}."
+                    f"clip(s) proposed by {model_name or 'the selector'}. "
+                    "Speaker-aware crop plans generated."
                 )
             else:
                 message = (
@@ -295,6 +310,89 @@ def _select_clips_with_progress(
     return candidates, model_name
 
 
+def _track_clips_with_progress(
+    session: Session,
+    job: Job,
+    settings: Settings,
+    transcript: Transcript,
+    source_path: Path,
+    tracker: SpeakerTracker | None,
+) -> None:
+    """Plan a speaker-aware crop for every candidate clip.
+
+    A tracking failure is recorded on the clip with a stable centred fallback;
+    it never fails the whole job. This keeps fallback behaviour explicit
+    instead of silently presenting a static centre crop as tracking.
+    """
+    active_tracker = tracker or OpenCVSpeakerTracker(settings)
+    clips = list(
+        session.execute(
+            select(Clip)
+            .where(Clip.job_id == job.id)
+            .order_by(Clip.start_seconds.asc())
+        )
+        .scalars()
+        .all()
+    )
+    if not clips:
+        return
+
+    apply_progress(
+        job,
+        97,
+        "Planning speaker-aware crops",
+        JobState.tracking_speakers,
+    )
+    session.commit()
+
+    tracking_root = job_work_dir(settings, job.id) / "tracking"
+    total = len(clips)
+    for index, clip in enumerate(clips):
+        clip_work_dir = tracking_root / clip.id
+        try:
+            result = active_tracker.track(
+                source_path,
+                clip.start_seconds,
+                clip.end_seconds,
+                job.width or 0,
+                job.height or 0,
+                transcript,
+                clip_work_dir,
+            )
+            clip.speaker_tracking_status = result.status
+            clip.speaker_tracking_confidence = result.confidence
+            clip.crop_plan = result.crop_plan
+            clip.tracking_details = result.details
+        except Exception as exc:  # noqa: BLE001 - fallback per clip
+            logger.exception(
+                "Speaker tracking failed for clip %s", clip.id
+            )
+            fallback = build_centered_result(
+                clip.start_seconds,
+                clip.end_seconds,
+                job.width or 0,
+                job.height or 0,
+                settings,
+                status="failed",
+                detail=f"Speaker tracking failed: {type(exc).__name__}.",
+                error_code="tracking_failed",
+            )
+            clip.speaker_tracking_status = fallback.status
+            clip.speaker_tracking_confidence = fallback.confidence
+            clip.crop_plan = fallback.crop_plan
+            clip.tracking_details = fallback.details
+
+        clip.updated_at = utc_now()
+        progress = 97 + int(round(2 * (index + 1) / total))
+        apply_progress(
+            job,
+            progress,
+            f"Planning speaker-aware crops ({index + 1}/{total})",
+            JobState.tracking_speakers,
+        )
+        session.commit()
+
+
 def _replace_clips(
     session: Session,
     job: Job,
@@ -317,6 +415,9 @@ def _replace_clips(
                 score=candidate.score,
                 component_scores=candidate.component_scores,
                 speaker_tracking_status="pending",
+                speaker_tracking_confidence=None,
+                crop_plan={},
+                tracking_details={},
                 render_status="pending",
                 created_at=now,
                 updated_at=now,

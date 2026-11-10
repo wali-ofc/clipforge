@@ -17,6 +17,13 @@ from app.services.clip_selection import (
     candidates_from_payload,
     deduplicate_candidates,
 )
+from app.services.face_detection import FaceBox
+from app.services.speaker_tracking import (
+    SpeakerTrackingError,
+    SpeakerTrackingResult,
+    TrackChoice,
+    build_crop_plan,
+)
 from app.services.transcription import TranscriptionError, build_transcript
 from app.utils.subprocesses import command_exists
 
@@ -143,6 +150,76 @@ class StubSelector:
         return deduplicate_candidates(candidates, self.settings.max_clips)
 
 
+class StubSpeakerTracker:
+    """Deterministic speaker tracker used by tests; never loads OpenCV."""
+
+    name = "stub-tracker"
+
+    def __init__(self, settings: Settings, *, fail: bool = False) -> None:
+        self.settings = settings
+        self.fail = fail
+
+    def track(
+        self,
+        source_path,
+        start_seconds,
+        end_seconds,
+        frame_width,
+        frame_height,
+        transcript,
+        work_dir,
+        on_progress=None,
+    ):
+        if on_progress:
+            on_progress(0.5)
+            on_progress(1.0)
+
+        if self.fail:
+            raise SpeakerTrackingError(
+                "tracking_failed",
+                "Simulated speaker tracking failure.",
+            )
+
+        width = max(1, int(frame_width or 1))
+        height = max(1, int(frame_height or 1))
+        box = FaceBox(
+            x=width * 0.4,
+            y=height * 0.25,
+            width=max(2.0, width * 0.2),
+            height=max(2.0, height * 0.3),
+            confidence=0.95,
+        )
+        plan = build_crop_plan(
+            [
+                TrackChoice(
+                    time=float(start_seconds),
+                    track_id=1,
+                    box=box,
+                    confidence=0.9,
+                    status="tracked",
+                    face_count=1,
+                )
+            ],
+            width,
+            height,
+            self.settings.output_width / self.settings.output_height,
+            float(start_seconds),
+            max(0.0, float(end_seconds) - float(start_seconds)),
+            self.settings,
+        )
+        return SpeakerTrackingResult(
+            status="tracked",
+            confidence=0.9,
+            crop_plan=plan.to_dict(),
+            details={
+                "method": "stub",
+                "detector": self.name,
+                "fallback_behavior": "stub fallback",
+                "limitations": "stub tracker",
+            },
+        )
+
+
 def _ffmpeg_command(settings: Settings, args: list[str]) -> list[str]:
     return [
         settings.ffmpeg_bin,
@@ -177,6 +254,7 @@ def app(settings: Settings):
         settings,
         transcriber=StubTranscriber(),
         selector=StubSelector(settings),
+        speaker_tracker=StubSpeakerTracker(settings),
     )
 
 
@@ -192,6 +270,7 @@ def no_speech_client(settings: Settings):
         settings,
         transcriber=StubTranscriber(has_speech=False),
         selector=StubSelector(settings),
+        speaker_tracker=StubSpeakerTracker(settings),
     )
     with TestClient(app) as test_client:
         yield test_client
@@ -203,6 +282,7 @@ def failing_client(settings: Settings):
         settings,
         transcriber=StubTranscriber(fail=True),
         selector=StubSelector(settings),
+        speaker_tracker=StubSpeakerTracker(settings),
     )
     with TestClient(app) as test_client:
         yield test_client
@@ -214,6 +294,19 @@ def failing_selector_client(settings: Settings):
         settings,
         transcriber=StubTranscriber(),
         selector=StubSelector(settings, fail=True),
+        speaker_tracker=StubSpeakerTracker(settings),
+    )
+    with TestClient(app) as test_client:
+        yield test_client
+
+
+@pytest.fixture
+def failing_tracker_client(settings: Settings):
+    app = create_app(
+        settings,
+        transcriber=StubTranscriber(),
+        selector=StubSelector(settings),
+        speaker_tracker=StubSpeakerTracker(settings, fail=True),
     )
     with TestClient(app) as test_client:
         yield test_client

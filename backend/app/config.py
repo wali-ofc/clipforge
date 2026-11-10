@@ -106,8 +106,24 @@ class Settings(BaseSettings):
     output_crf: int = Field(default=23, ge=0, le=51)
     output_preset: str = "veryfast"
 
-    # Face sampling (Phase 4)
-    face_sample_fps: float = Field(default=2.0, gt=0)
+    # Face sampling and speaker tracking (Phase 4)
+    face_sample_fps: float = Field(default=2.0, gt=0, le=15.0)
+    face_detector_model_path: Path = Path(
+        "./data/models/face_detection_yunet_2023mar.onnx"
+    )
+    face_detector_score_threshold: float = Field(default=0.6, ge=0, le=1)
+    face_detector_nms_threshold: float = Field(default=0.3, ge=0, le=1)
+    face_detector_top_k: int = Field(default=5000, ge=1)
+    face_detector_min_size: int = Field(default=32, ge=1)
+    face_track_iou_threshold: float = Field(default=0.2, ge=0, le=1)
+    face_track_max_gap_seconds: float = Field(default=1.0, gt=0)
+    face_track_min_observations: int = Field(default=2, ge=1)
+    speaker_confidence_threshold: float = Field(default=0.55, ge=0, le=1)
+    speaker_switch_margin: float = Field(default=0.12, ge=0, le=1)
+    crop_ema_alpha: float = Field(default=0.35, gt=0, le=1)
+    crop_dead_zone_ratio: float = Field(default=0.015, ge=0, le=1)
+    crop_max_speed_ratio: float = Field(default=0.5, gt=0)
+    crop_hold_seconds: float = Field(default=2.0, ge=0)
 
     @field_validator("data_dir")
     @classmethod
@@ -119,6 +135,13 @@ class Settings(BaseSettings):
     @field_validator("whisper_model_dir")
     @classmethod
     def _resolve_model_dir(cls, value: Path) -> Path:
+        if not value.is_absolute():
+            value = BACKEND_DIR / value
+        return value.resolve()
+
+    @field_validator("face_detector_model_path")
+    @classmethod
+    def _resolve_face_model_path(cls, value: Path) -> Path:
         if not value.is_absolute():
             value = BACKEND_DIR / value
         return value.resolve()

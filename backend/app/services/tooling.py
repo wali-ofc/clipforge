@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import logging
 from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError, version as package_version
@@ -109,6 +110,56 @@ def check_whisper(settings: Settings) -> ToolCheck:
         version=(
             f"faster-whisper {installed} · {settings.whisper_device}/"
             f"{settings.whisper_compute_type} · model {settings.whisper_model}"
+        ),
+    )
+
+
+def check_face_detection(settings: Settings) -> ToolCheck:
+    """Report whether OpenCV and the YuNet model are available.
+
+    This never loads the detector. Speaker tracking degrades to an explicit
+    centred crop when this check is unavailable.
+    """
+    if importlib.util.find_spec("cv2") is None:
+        return ToolCheck(
+            name="face_detection",
+            command=str(settings.face_detector_model_path),
+            available=False,
+            detail=(
+                "OpenCV is not installed, so speaker tracking will use a "
+                "centred crop. Install backend dependencies and restart."
+            ),
+        )
+
+    if not settings.face_detector_model_path.is_file():
+        return ToolCheck(
+            name="face_detection",
+            command=str(settings.face_detector_model_path),
+            available=False,
+            detail=(
+                "The YuNet face-detection model is missing. Download "
+                f"{settings.face_detector_model_path.name} into "
+                f"{settings.face_detector_model_path.parent} or set "
+                "FACE_DETECTOR_MODEL_PATH. Speaker tracking will use a "
+                "centred crop until then."
+            ),
+        )
+
+    try:
+        opencv_version = package_version("opencv-python-headless")
+    except PackageNotFoundError:
+        try:
+            opencv_version = package_version("opencv-python")
+        except PackageNotFoundError:
+            opencv_version = "installed"
+
+    return ToolCheck(
+        name="face_detection",
+        command=str(settings.face_detector_model_path),
+        available=True,
+        version=(
+            f"OpenCV {opencv_version} · YuNet · "
+            f"{settings.face_sample_fps:g} fps sampling"
         ),
     )
 

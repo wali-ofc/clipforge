@@ -2,8 +2,8 @@
 
 Local-first AI video clipping. Long recordings go in; short vertical clips come out — processed entirely on your machine, with no cloud services and no accounts.
 
-> **Build status: Phase 0 + Phase 1 + Phase 2 + Phase 3 complete.**
-> Uploads are streamed to disk, validated with `ffprobe`, persisted in SQLite, and processed by a single background worker. The worker extracts audio with FFmpeg, transcribes it locally with faster-whisper, then asks a local Ollama model for self-contained candidate moments. Proposals are validated, boundary-refined, scored, deduplicated, and stored. Speaker tracking, captions, and 9:16 rendering are **not implemented yet**.
+> **Build status: Phase 0 + Phase 1 + Phase 2 + Phase 3 + Phase 4 complete.**
+> Uploads are streamed to disk, validated with `ffprobe`, persisted in SQLite, and processed by a single background worker. The worker extracts audio with FFmpeg, transcribes it locally with faster-whisper, asks a local Ollama model for self-contained candidate moments, then samples frames only inside each selected candidate to build face tracks, estimate the likely active speaker, and produce a smoothed 9:16 crop plan. Captions and rendered clip files are **not implemented yet**.
 
 ## What works today
 
@@ -18,8 +18,12 @@ Local-first AI video clipping. Long recordings go in; short vertical clips come 
 - Overlapping transcript windows (about three minutes) so the LLM never receives the whole transcript at once
 - Structured JSON clip proposals through Ollama, validated and boundary-refined against word and segment timestamps
 - Deterministic weighted **clip potential** scores, duplicate removal, and a configurable result limit
-- Minimal Next.js UI: drag/drop upload, upload progress, live job status polling, transcript summary, candidate clip cards, error states
-- Metadata, transcript, and clip proposals exposed over the API; rendered clip files are not produced yet
+- Face sampling only inside each candidate range, with a modular detector interface (OpenCV YuNet by default)
+- Face-track association across samples, heuristic active-speaker estimation, and a stable largest/central-face fallback
+- Time-indexed crop plans in source-frame pixels with EMA smoothing, a dead zone, a crop-speed limit, and interpolation for rendering
+- Explicit tracking status and confidence on every clip; detection failure holds the last stable crop briefly and then centres
+- Minimal Next.js UI: drag/drop upload, upload progress, live job status polling, transcript summary, candidate clip cards with tracking status, error states
+- Metadata, transcript, clip proposals, and crop plans exposed over the API; rendered clip files are not produced yet
 
 Captions are intentionally **not** generated or burned into any video. The transcript is internal pipeline data.
 
@@ -33,13 +37,13 @@ clipforge/
 │   │   ├── models/       # SQLAlchemy Job and Clip models
 │   │   ├── prompts/      # editable clip-selection prompt
 │   │   ├── schemas/      # Pydantic response, transcript, and LLM models
-│   │   ├── services/     # probing, tool checks, transcription, Ollama, selection
+│   │   ├── services/     # probing, tool checks, transcription, Ollama, selection, face tracking
 │   │   ├── utils/        # config-independent helpers (files, paths, subprocess)
-│   │   ├── worker/       # queue runner and inspection/transcription/selection pipeline
+│   │   ├── worker/       # queue runner and inspection/transcription/selection/tracking pipeline
 │   │   ├── config.py     # typed settings
 │   │   ├── db.py         # engine, sessions, schema creation + additive migrations
 │   │   └── main.py       # FastAPI app + lifespan
-│   ├── tests/            # 95 pytest tests
+│   ├── tests/            # 117 pytest tests
 │   ├── data/             # runtime only, gitignored
 │   ├── requirements.lock.txt
 │   ├── pyproject.toml
@@ -62,6 +66,8 @@ clipforge/
 | FFmpeg / ffprobe | 9.0.2 | Must be on `PATH` or set `FFMPEG_BIN` / `FFPROBE_BIN` |
 | Ollama | 0.40+ | Local LLM server for clip selection |
 | Whisper model | downloaded on first use | Cached under `backend/data/models` |
+| OpenCV | 4.14 (`opencv-python-headless`) | Installed with backend dependencies; used by the face detector |
+| YuNet model | downloaded once | `backend/data/models/face_detection_yunet_2023mar.onnx` (~230 KB) |
 
 ## Setup
 
@@ -85,6 +91,17 @@ FFPROBE_BIN=C:/ffmpeg-9.0.2-essentials_build/bin/ffprobe.exe
 A locked, fully resolved dependency list lives in `backend/requirements.lock.txt`.
 
 The first transcription downloads the configured Whisper model into `WHISPER_MODEL_DIR` (default `backend/data/models`). This needs internet access once; later runs work offline. For a fast smoke test, set `WHISPER_MODEL=tiny`. The default is `small`, which is larger and slower on CPU.
+
+Speaker tracking also needs the YuNet face model. It is not bundled with the repository, so download it once into the model directory:
+
+```powershell
+New-Item -ItemType Directory -Force backend/data/models | Out-Null
+Invoke-WebRequest `
+  -Uri "https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx" `
+  -OutFile backend/data/models/face_detection_yunet_2023mar.onnx
+```
+
+If the model or OpenCV is missing, the app still starts and jobs still complete. Each clip is marked `unavailable` and receives a centred crop plan; the health endpoint reports `face_detection` as unavailable with the exact fix.
 
 ### Ollama (Phase 3)
 
@@ -181,8 +198,23 @@ Relative paths resolve against `backend/`, not the current shell directory.
 | `CLIP_WINDOW_OVERLAP_SECONDS` | `30` | Overlap between windows; must be below the window |
 | `CLIP_MAX_CANDIDATES_PER_CHUNK` | `4` | Per-window proposal cap |
 | `CLIP_SCORE_WEIGHTS` | `{"hook":0.25,"clarity":0.25,"payoff":0.20,"emotion_or_interest":0.20,"conciseness":0.10}` | Score weights; normalized to sum to 1 |
+| `FACE_SAMPLE_FPS` | `2` | Frame sampling rate inside each candidate clip (max 15) |
+| `FACE_DETECTOR_MODEL_PATH` | `./data/models/face_detection_yunet_2023mar.onnx` | YuNet ONNX model file |
+| `FACE_DETECTOR_SCORE_THRESHOLD` | `0.6` | Minimum face confidence |
+| `FACE_DETECTOR_NMS_THRESHOLD` | `0.3` | Non-maximum-suppression threshold |
+| `FACE_DETECTOR_TOP_K` | `5000` | Detector candidate cap |
+| `FACE_DETECTOR_MIN_SIZE` | `32` | Minimum face box size in pixels |
+| `FACE_TRACK_IOU_THRESHOLD` | `0.2` | IoU needed to associate a face across samples |
+| `FACE_TRACK_MAX_GAP_SECONDS` | `1.0` | Maximum gap before a track is closed |
+| `FACE_TRACK_MIN_OBSERVATIONS` | `2` | Observations needed for a track |
+| `SPEAKER_CONFIDENCE_THRESHOLD` | `0.55` | Below this the stable fallback face is used |
+| `SPEAKER_SWITCH_MARGIN` | `0.12` | Margin a different face needs to replace the fallback |
+| `CROP_EMA_ALPHA` | `0.35` | EMA weight for new crop positions |
+| `CROP_DEAD_ZONE_RATIO` | `0.015` | Dead zone as a fraction of crop width |
+| `CROP_MAX_SPEED_RATIO` | `0.5` | Maximum crop movement in crop widths per second |
+| `CROP_HOLD_SECONDS` | `2.0` | Hold the last stable crop after detection disappears |
 
-Output dimensions and face-sampling settings for later phases are defined and validated but unused. Output dimensions must be an even portrait 9:16 ratio; clip minimum must be below maximum.
+Output dimensions (`OUTPUT_WIDTH` / `OUTPUT_HEIGHT`, `OUTPUT_CRF`, `OUTPUT_PRESET`) are defined and validated for Phase 5 but are not used for rendering yet. Output dimensions must be an even portrait 9:16 ratio; the crop planner derives its target aspect from them (default `1080×1920`; `720×1280` is also valid). Clip minimum must be below maximum.
 
 The selection prompt itself is editable at `backend/app/prompts/clip_selection.txt`. It is re-read on every job, so prompt changes take effect without restarting the backend. Duration limits, clip count, and score weights are configuration, not prompt text.
 
@@ -195,7 +227,7 @@ The selection prompt itself is editable at `backend/app/prompts/clip_selection.t
 | `GET` | `/api/jobs/{id}` | Job state, progress, media metadata, transcript summary |
 | `GET` | `/api/jobs/{id}/transcript` | Timestamped transcript JSON (internal pipeline data) |
 | `GET` | `/api/jobs/{id}/clips` | Stored candidate clips for a job |
-| `GET` | `/api/clips/{id}` | One clip's metadata and heuristic score |
+| `GET` | `/api/clips/{id}` | One clip's metadata, heuristic score, tracking status, and crop plan |
 | `GET` | `/api/clips/{id}/file` | Rendered clip file; `404 clip_not_rendered` until Phase 5 |
 
 Errors use a consistent shape:
@@ -208,9 +240,9 @@ Status codes: `400 empty_file`, `404 job_not_found`, `404 transcript_not_found`,
 
 ### Job states and progress
 
-`queued → inspecting → transcribing → selecting_clips → completed | failed`
+`queued → inspecting → transcribing → selecting_clips → tracking_speakers → completed | failed`
 
-Progress is monotonic: `5` on inspection, `15` when audio preparation starts, `20–80` during transcription, `82` while the transcript is saved, `84–97` during clip selection, and `100` on completion. A job with silent audio or no audio stream still completes with an empty transcript and `has_speech=false`; selection is skipped. The remaining states (`tracking_speakers`, `rendering`, `cancelled`) exist in the enum so later phases and clients do not need a schema change.
+Progress is monotonic: `5` on inspection, `15` when audio preparation starts, `20–80` during transcription, `82` while the transcript is saved, `84–97` during clip selection, `97–99` during speaker tracking and crop planning, and `100` on completion. A job with silent audio or no audio stream still completes with an empty transcript and `has_speech=false`; selection and tracking are skipped. `rendering` and `cancelled` exist in the enum so later phases and clients do not need a schema change.
 
 Clip selection failures are explicit: if Ollama is unreachable or the configured model is missing, the job fails with a message naming the fix. If the model returns malformed output for one window, that window is skipped and the rest continue. If every window is malformed or no proposal fits the limits, the job completes with zero clips and a clear stage message rather than crashing the worker.
 
@@ -256,18 +288,62 @@ The score is a heuristic ranking aid. It is **not** a virality prediction and sh
 
 Before selection the cached Whisper model is released, so Whisper and the LLM are not resident at the same time on a memory-constrained machine.
 
+### Speaker tracking and crop plans
+
+Speaker tracking runs only after clip selection and only inside each candidate range. FFmpeg seeks to the candidate start, decodes at most that range, and writes frames at `FACE_SAMPLE_FPS`; the whole source is never scanned. Frames are deleted when the clip finishes.
+
+1. **Detection.** The modular `FaceDetector` protocol is implemented by `OpenCVYuNetDetector` (OpenCV YuNet ONNX). A different detector can be supplied without changing the tracker. Detections are in decoded, display-oriented frame pixels, so rotation metadata is already applied.
+2. **Tracks.** Boxes are associated across samples by IoU, with a centre-distance fallback for small movements and short gaps (`FACE_TRACK_*`). Each track keeps its observations and a cheap lower-face motion signal.
+3. **Active speaker.** With one visible face, that face is used. With several, each candidate is scored from face size, centrality, continuity with the previous choice, transcript speech timing, mouth-region motion, and detector confidence. If the resulting confidence is below `SPEAKER_CONFIDENCE_THRESHOLD`, the planner keeps a stable largest/central face (with `SPEAKER_SWITCH_MARGIN` hysteresis) instead of switching rapidly.
+4. **Crop geometry.** The planner works in source pixels. For a wide source it uses the full height, so a 9:16 crop is `source_height * 9 / 16` wide; a source already narrower than the target uses full width and crops height. The crop is always clamped inside the source. A source already at 9:16 is not cropped unnecessarily.
+5. **Smoothing.** Crop centres are smoothed with an EMA (`CROP_EMA_ALPHA`), a dead zone (`CROP_DEAD_ZONE_RATIO` of crop width), and a speed limit (`CROP_MAX_SPEED_RATIO` crop widths per second). Samples are stored at clip-relative timestamps; Phase 5 will interpolate between them with `interpolate_crop()`.
+6. **Fallback.** If a face disappears, the last stable crop is held for `CROP_HOLD_SECONDS`, then the plan moves to a centred crop. If detection cannot run at all, every clip still receives an explicit centred plan and status; the job is never failed by tracking.
+
+Tracking is persisted per clip as `speaker_tracking_status`, `speaker_tracking_confidence`, `crop_plan`, and `tracking_details`. Statuses are `tracked`, `single_face`, `fallback`, `no_faces`, `no_frames`, `unavailable`, `failed`, and `pending`. A centred crop is always labelled as such; it is never presented as successful tracking.
+
+The active-speaker estimate is a heuristic. **No lip-sync or speaker-diarization model is used.** Confidence and fallback behaviour are exposed so the UI can be honest about uncertainty.
+
+`crop_plan` shape (coordinates are source pixels, times are clip-relative seconds):
+
+```json
+{
+  "version": 1,
+  "coordinate_space": "source_pixels",
+  "time_space": "clip_relative_seconds",
+  "method": "ema+dead-zone+speed-limit",
+  "target_aspect": 0.5625,
+  "source": { "width": 1920, "height": 1080 },
+  "crop": { "width": 607.5, "height": 1080 },
+  "samples": [
+    {
+      "time": 0.0,
+      "x": 760.0,
+      "y": 540.0,
+      "crop_width": 607.5,
+      "crop_height": 1080.0,
+      "confidence": 0.91,
+      "status": "tracked",
+      "face_count": 1
+    }
+  ]
+}
+```
+
+`tracking_details` records the method, detector, sampling rate, sampled/face frame counts, track and speech-interval counts, fallback behaviour, limitations, and a status reason or error code when applicable.
+
 ## Storage
 
 ```
 backend/data/
 ├── clipforge.db                 # SQLite (WAL mode)
-├── models/                      # faster-whisper model cache (gitignored)
+├── models/                      # faster-whisper cache + YuNet ONNX model (gitignored)
 ├── uploads/<job-uuid>/source.mp4
 ├── work/<job-uuid>/transcript.json
+├── work/<job-uuid>/tracking/<clip-uuid>/   # temporary sampled frames, deleted after tracking
 └── clips/<job-uuid>/            # reserved for rendered output (Phase 5)
 ```
 
-Clip proposals are stored as rows in `clips` with start/end/duration, title, hook, reason, score, component scores, and `pending` speaker-tracking/render status. No clip video files are produced yet, so `/api/clips/{id}/file` returns `404 clip_not_rendered`.
+Clip proposals are stored as rows in `clips` with start/end/duration, title, hook, reason, score, component scores, speaker-tracking status/confidence, crop plan, tracking details, and `pending` render status. No clip video files are produced yet, so `/api/clips/{id}/file` returns `404 clip_not_rendered`.
 
 During transcription, FFmpeg writes `work/<job-uuid>/audio.wav` (16 kHz mono PCM). It is deleted after transcription; only `transcript.json` remains. Paths are derived from the job UUID only. The original filename is stored as display metadata and sanitized; it is never used to build a filesystem path. Stored relative paths are checked against `DATA_DIR` before use.
 
@@ -278,7 +354,7 @@ cd backend
 .\.venv\Scripts\python.exe -m pytest
 ```
 
-Coverage includes: config path/ratio/extension validation, clip weight/range/Ollama validation, filename sanitization and traversal protection, streamed write limits, ffprobe parsing and failure codes, health responses, upload rejection paths, job persistence across app restarts, empty clip lists, worker queue claims, monotonic progress, interrupted-job recovery, transcript range clamping, non-speech filtering, atomic transcript round-trips, audio extraction, the no-speech and no-audio-stream paths, transcription failure handling, transcript endpoint responses, overlapping transcript windows with absolute timestamps, prompt rendering and placeholder errors, JSON-schema shape, whole-segment boundary snapping, too-short/out-of-bounds/reversed rejection, deterministic weighted scoring, IoU deduplication and count limits, malformed model output handling, Ollama unavailable/missing-model/timeout errors, and clip metadata/file endpoints. Unit tests inject a stub transcriber and stub selector or fake Ollama client, so they never download weights or call a real model.
+Coverage includes: config path/ratio/extension validation, clip weight/range/Ollama validation, filename sanitization and traversal protection, streamed write limits, ffprobe parsing and failure codes, health responses, upload rejection paths, job persistence across app restarts, legacy SQLite additive migrations, empty clip lists, worker queue claims, monotonic progress, interrupted-job recovery, transcript range clamping, non-speech filtering, atomic transcript round-trips, audio extraction, the no-speech and no-audio-stream paths, transcription failure handling, transcript endpoint responses, overlapping transcript windows with absolute timestamps, prompt rendering and placeholder errors, JSON-schema shape, whole-segment boundary snapping, too-short/out-of-bounds/reversed rejection, deterministic weighted scoring, IoU deduplication and count limits, malformed model output handling, Ollama unavailable/missing-model/timeout errors, crop geometry for wide/portrait/exact-9:16 sources, face-track association, speech-interval merging, single-face and multi-face speaker selection, mouth-motion cueing, stable low-confidence fallback, hold-then-centre behaviour, dead-zone and speed-limit smoothing, crop-plan interpolation, explicit centred fallback, missing-model errors, tracker orchestration with an injected detector, and clip metadata/file endpoints including tracking failure. Unit tests inject a stub transcriber, stub selector, and stub speaker tracker (or fake Ollama client), so they never download weights, load the face model, or call a real model.
 
 Frontend verification:
 
@@ -302,11 +378,26 @@ npm.cmd run build
 - Phase 3: `GET /api/jobs/{id}/clips` and `GET /api/clips/{id}` returned the stored proposal with `render_status=pending` and `speaker_tracking_status=pending`; `GET /api/clips/{id}/file` returned `404 clip_not_rendered`
 - Phase 3: a run with the default 180 s request timeout failed with the actionable `Ollama did not respond within 180 seconds…` message instead of hanging or crashing the worker
 - Phase 3: the editable prompt was re-read without a restart, and prompt calibration plus containment dedup changed the next run's output as intended
+- Phase 4: health reported `face_detection` available with OpenCV `4.14.0.94`, YuNet, and 2 fps sampling; `ollama` reported `qwen2.5:3b`
+- Phase 4: a real `qwen2.5:3b` probe returned reachable, model available, and valid structured JSON
+- Phase 4: YuNet detected the face in a 512×512 still at confidence 0.909
+- Phase 4: an 8 s 1280×720 single-face sample → `tracked`, 16/16 frames with a face, one track, confidence 0.962; the crop centre followed the moving face within the speed limit
+- Phase 4: an 8 s two-face sample with mouth-region motion → `tracked`, two tracks, confidence 0.973; the plan followed the moving/mouth-active face
+- Phase 4: an 8 s two-face sample with no motion cue → mixed `fallback`/`tracked` with one stable face and no switching; confidence 0.85
+- Phase 4: an 8 s sample with no faces → `no_faces`, confidence 0.0, every crop sample `centered` at the source centre
+- Phase 4: sampled frame directories were removed after each clip, and crop plans interpolated correctly at intermediate timestamps
+- Phase 4 end-to-end: a 66.7 s 1280×720 talking-head video with real speech ran `upload → inspecting → transcribing → selecting_clips → tracking_speakers → completed`; `qwen2.5:3b` proposed 4 clips and all 4 were stored as `tracked` (confidence `0.953`–`0.957`, `render_status=pending`)
+- Phase 4 end-to-end: every stored crop plan used `coordinate_space=source_pixels`, `time_space=clip_relative_seconds`, a `405×720` crop (`720 × 9 / 16`), 41–50 samples, and source dimensions `1280×720`; tracking details recorded 1 track, 100% face frames, and 3–6 speech intervals per clip
+- Phase 4 end-to-end: crop movement stayed within the configured speed limit at the 2 fps sampling rate, with no rapid switching
+- Phase 4 timeout caveat: with the default `OLLAMA_TIMEOUT_SECONDS=180`, `qwen2.5:3b` on this CPU exceeded the limit during `selecting_clips` and the job failed with the actionable timeout message. Raising the timeout (and `OLLAMA_KEEP_ALIVE`) let the same job finish; the default stays at 180 s so slow machines get a clear error rather than an indefinite hang
 - Corrupt `.mp4` → `422 unreadable_media`; `.txt` → `415 unsupported_file_type`; unknown job UUID → `404 job_not_found`; unknown clip UUID → `404 clip_not_found`
 
 ## Current limitations
 
-- No speaker tracking, captions, music, branding, or 9:16 rendering yet; clips are proposals only
+- No captions, music, branding, or 9:16 rendering yet; clips are proposals plus crop plans
+- Active-speaker detection is heuristic (size, centrality, continuity, speech timing, mouth motion). It is not lip-sync or diarization, so it can follow the wrong face when speakers overlap, are similarly sized, or are off-centre
+- Tracking samples at `FACE_SAMPLE_FPS` (2 fps by default). Very fast movement between samples is smoothed and may lag slightly
+- Face detection depends on OpenCV and the YuNet model; without them every clip gets an explicit centred crop
 - CPU-only transcription by default; long videos are slow, and `small` is much slower than `tiny`
 - Clip selection quality depends on the installed local model; small models can miss moments or return malformed JSON (those windows are skipped)
 - The default `qwen2.5:3b` model must be pulled before selection works; the health check reports it as unavailable until then

@@ -39,6 +39,28 @@ export interface Job {
   completed_at: string | null;
 }
 
+export interface CropPlanSample {
+  time: number;
+  x: number;
+  y: number;
+  crop_width: number;
+  crop_height: number;
+  confidence: number;
+  status: string;
+  face_count: number;
+}
+
+export interface CropPlan {
+  version?: number;
+  coordinate_space?: string;
+  time_space?: string;
+  method?: string;
+  target_aspect?: number;
+  source?: { width: number; height: number };
+  crop?: { width: number; height: number };
+  samples?: CropPlanSample[];
+}
+
 export interface Clip {
   id: string;
   job_id: string;
@@ -55,6 +77,8 @@ export interface Clip {
   height: number | null;
   speaker_tracking_status: string;
   speaker_tracking_confidence: number | null;
+  crop_plan: CropPlan;
+  tracking_details: Record<string, unknown>;
   render_status: string;
   error: string | null;
   created_at: string;
