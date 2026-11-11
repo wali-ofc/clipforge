@@ -2,8 +2,8 @@
 
 Local-first AI video clipping. Long recordings go in; short vertical clips come out — processed entirely on your machine, with no cloud services and no accounts.
 
-> **Build status: Phase 0 + Phase 1 + Phase 2 + Phase 3 + Phase 4 + Phase 5 complete.**
-> Uploads are streamed to disk, validated with `ffprobe`, persisted in SQLite, and processed by a single background worker. The worker extracts audio with FFmpeg, transcribes it locally with faster-whisper, asks a local Ollama model for self-contained candidate moments, samples frames only inside each selected candidate to build face tracks and a smoothed 9:16 crop plan, then renders every selected clip as a verified H.264/AAC MP4 with a time-varying portrait crop. Captions and music are still **not implemented**, by design.
+> **Build status: Phase 0 + Phase 1 + Phase 2 + Phase 3 + Phase 4 + Phase 5 + Phase 6 complete.**
+> Uploads are streamed to disk, validated with `ffprobe`, persisted in SQLite, and processed by a single background worker. The worker extracts audio with FFmpeg, transcribes it locally with faster-whisper, asks a local Ollama model for self-contained candidate moments, samples frames only inside each selected candidate to build face tracks and a smoothed 9:16 crop plan, then renders every selected clip as a verified H.264/AAC MP4 with a time-varying portrait crop. The results page previews each clip in the browser and downloads the MP4 through the API. Captions and music are still **not implemented**, by design.
 
 ## What works today
 
@@ -25,8 +25,8 @@ Local-first AI video clipping. Long recordings go in; short vertical clips come 
 - Per-clip FFmpeg rendering with a time-varying 9:16 crop driven by the stored plan, H.264 video, AAC audio, and `+faststart`
 - Every rendered file is probed with ffprobe for dimensions, codecs, container, audio presence, frame rate, and duration before it is marked complete
 - Configurable output resolution (`1080×1920` default, `720×1280` supported), frame rate, CRF, preset, and render timeout
-- Minimal Next.js UI: drag/drop upload, upload progress, live job status polling, transcript summary, clip cards with tracking and render status, error states
-- Metadata, transcript, clip proposals, crop plans, and rendered MP4 files exposed over the API
+- Minimal Next.js UI: drag/drop upload, upload progress, live job status polling, transcript summary, results cards with inline video previews, download buttons, tracking/fallback and render status, error states
+- Metadata, transcript, clip proposals, crop plans, and rendered MP4 files exposed over the API; clips stream inline for preview or download as attachments with safe filenames
 
 Captions are intentionally **not** generated or burned into any video. The transcript is internal pipeline data. No music, text, or watermark is added during rendering.
 
@@ -46,7 +46,7 @@ clipforge/
 │   │   ├── config.py     # typed settings
 │   │   ├── db.py         # engine, sessions, schema creation + additive migrations
 │   │   └── main.py       # FastAPI app + lifespan
-│   ├── tests/            # 138 pytest tests
+│   ├── tests/            # 139 pytest tests
 │   ├── data/             # runtime only, gitignored
 │   ├── requirements.lock.txt
 │   ├── pyproject.toml
@@ -236,7 +236,7 @@ The selection prompt itself is editable at `backend/app/prompts/clip_selection.t
 | `GET` | `/api/jobs/{id}/transcript` | Timestamped transcript JSON (internal pipeline data) |
 | `GET` | `/api/jobs/{id}/clips` | Stored candidate clips for a job |
 | `GET` | `/api/clips/{id}` | One clip's metadata, heuristic score, tracking status, and crop plan |
-| `GET` | `/api/clips/{id}/file` | Rendered portrait MP4; `404 clip_not_rendered` until rendering succeeds |
+| `GET` | `/api/clips/{id}/file` | Rendered portrait MP4; streams inline for preview, or `?download=true` for an attachment with a safe filename. `404 clip_not_rendered` until rendering succeeds |
 
 Errors use a consistent shape:
 
@@ -353,6 +353,20 @@ Rendering runs after tracking, for every stored candidate. Each clip is cut from
 
 A single clip failure does not fail the job. The clip is marked `failed` with its error, its `output_filename` is cleared, and the remaining clips continue. If every clip fails, the job still completes with an explicit stage message; `/api/clips/{id}/file` returns `404 clip_not_rendered` for failed clips.
 
+### Results and downloads
+
+The job page is the results page. While a job runs it polls `/api/jobs/{id}` every two seconds and shows the current stage and monotonic progress. When the job completes, each clip card shows:
+
+- an inline `<video>` preview streamed from `/api/clips/{id}/file`
+- the clip title, hook, selection reason, source time range, and duration
+- the heuristic clip-potential score (out of 100) and crop/output dimensions
+- the speaker-tracking status and confidence
+- an explicit amber note whenever tracking used a fallback (stable face, centre crop, no face, tracking failure), so the UI never claims active-speaker framing it did not achieve
+- a **Download MP4** button pointing at `/api/clips/{id}/file?download=true`
+- the per-clip render error when rendering failed
+
+`FileResponse` supports HTTP range requests, so the preview can seek without downloading the whole file. `?download=true` switches `Content-Disposition` to `attachment` and uses a sanitized filename derived from the clip title. The browser never receives a filesystem path: the stored relative path is resolved and checked against `DATA_DIR` on the server.
+
 ## Storage
 
 ```
@@ -377,7 +391,7 @@ cd backend
 .\.venv\Scripts\python.exe -m pytest
 ```
 
-Coverage includes: config path/ratio/extension validation, clip weight/range/Ollama validation, filename sanitization and traversal protection, streamed write limits, ffprobe parsing and failure codes, health responses, upload rejection paths, job persistence across app restarts, legacy SQLite additive migrations, empty clip lists, worker queue claims, monotonic progress, interrupted-job recovery, transcript range clamping, non-speech filtering, atomic transcript round-trips, audio extraction, the no-speech and no-audio-stream paths, transcription failure handling, transcript endpoint responses, overlapping transcript windows with absolute timestamps, prompt rendering and placeholder errors, JSON-schema shape, whole-segment boundary snapping, too-short/out-of-bounds/reversed rejection, deterministic weighted scoring, IoU deduplication and count limits, malformed model output handling, Ollama unavailable/missing-model/timeout errors, crop geometry for wide/portrait/exact-9:16 sources, face-track association, speech-interval merging, single-face and multi-face speaker selection, mouth-motion cueing, stable low-confidence fallback, hold-then-centre behaviour, dead-zone and speed-limit smoothing, crop-plan interpolation, explicit centred fallback, missing-model errors, tracker orchestration with an injected detector, crop command generation and clamping, output verification for dimensions/codecs/audio/duration/frame rate, real FFmpeg renders with and without audio, a rendered dynamic crop that visibly follows the plan, per-clip render failure handling, and clip metadata/file endpoints. Unit tests inject a stub transcriber, stub selector, stub speaker tracker, and stub renderer (or fake Ollama client), so they never download weights, load the face model, call a real model, or render real video unless a test is explicitly marked as an FFmpeg integration test.
+Coverage includes: config path/ratio/extension validation, clip weight/range/Ollama validation, filename sanitization and traversal protection, streamed write limits, ffprobe parsing and failure codes, health responses, upload rejection paths, job persistence across app restarts, legacy SQLite additive migrations, empty clip lists, worker queue claims, monotonic progress, interrupted-job recovery, transcript range clamping, non-speech filtering, atomic transcript round-trips, audio extraction, the no-speech and no-audio-stream paths, transcription failure handling, transcript endpoint responses, overlapping transcript windows with absolute timestamps, prompt rendering and placeholder errors, JSON-schema shape, whole-segment boundary snapping, too-short/out-of-bounds/reversed rejection, deterministic weighted scoring, IoU deduplication and count limits, malformed model output handling, Ollama unavailable/missing-model/timeout errors, crop geometry for wide/portrait/exact-9:16 sources, face-track association, speech-interval merging, single-face and multi-face speaker selection, mouth-motion cueing, stable low-confidence fallback, hold-then-centre behaviour, dead-zone and speed-limit smoothing, crop-plan interpolation, explicit centred fallback, missing-model errors, tracker orchestration with an injected detector, crop command generation and clamping, output verification for dimensions/codecs/audio/duration/frame rate, real FFmpeg renders with and without audio, a rendered dynamic crop that visibly follows the plan, per-clip render failure handling, clip metadata/file endpoints, inline vs attachment download headers, safe download filenames, and the rule that a clip file is served only after `render_status=completed`. Unit tests inject a stub transcriber, stub selector, stub speaker tracker, and stub renderer (or fake Ollama client), so they never download weights, load the face model, call a real model, or render real video unless a test is explicitly marked as an FFmpeg integration test.
 
 Frontend verification:
 
@@ -418,6 +432,12 @@ npm.cmd run build
 - Phase 5: YuNet detected the speaker in rendered frames at relative positions x `0.45–0.53`, y `0.47–0.52`, confirming the time-varying crop kept the face well framed across all four clips
 - Phase 5: a synthetic red/blue source rendered with a left-to-right crop plan changed from red to blue over time, proving the dynamic `sendcmd` crop actually moves rather than staying static
 - Phase 5: temporary `render` command files were removed after each clip, and a simulated renderer failure marked the clip `failed`, cleared its output path, and returned `404 clip_not_rendered`
+- Phase 6: the Phase 4 job's four clips were rendered and persisted, then opened in the browser at `/jobs/{id}`; all four `<video>` elements reached `readyState=4` with `videoWidth=1080` / `videoHeight=1920`, and playback advanced (`currentTime 1.15 s` of a `25.1 s` clip) with no console errors
+- Phase 6: `GET /api/clips/{id}/file` answered a `Range: bytes=0-0` request with `206 Partial Content`, `accept-ranges: bytes`, `content-type: video/mp4`, and `content-disposition: inline; filename*=utf-8''Initial%20Tool%20Introduction.mp4`
+- Phase 6: `?download=true` returned `content-disposition: attachment` with the same sanitized title-based filename; clicking **Download MP4** in the browser produced a download named `Initial Tool Introduction.mp4`
+- Phase 6: temporarily marking one clip `speaker_tracking_status=fallback` made its card show the "Stable fallback face" badge, `32% speaker confidence`, and the amber note "Speaker tracking used a stable fallback face, not active-speaker detection."; restoring `tracked` removed the note
+- Phase 6: at `1440 px` and `390 px` the results page had no horizontal overflow, the 9:16 previews stayed inside their cards, and every card text node measured at least `7.2:1` contrast against its composited background
+- Phase 6: a clip forced back to `render_status=pending` returned `404 clip_not_rendered`, so a stored path alone never exposes a file
 - Corrupt `.mp4` → `422 unreadable_media`; `.txt` → `415 unsupported_file_type`; unknown job UUID → `404 job_not_found`; unknown clip UUID → `404 clip_not_found`
 
 ## Current limitations

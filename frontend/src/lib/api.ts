@@ -210,3 +210,13 @@ export function uploadVideo(
     request.send(form);
   });
 }
+
+/**
+ * URL for a rendered clip. The browser streams the file from the backend; it
+ * never receives a filesystem path. `download` asks the backend for an
+ * attachment with a safe filename.
+ */
+export function getClipFileUrl(clipId: string, download = false): string {
+  const base = `${API_BASE_URL}/api/clips/${encodeURIComponent(clipId)}/file`;
+  return download ? `${base}?download=true` : base;
+}

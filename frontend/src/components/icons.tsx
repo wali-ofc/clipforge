@@ -207,3 +207,17 @@ export function CpuIcon(props: IconProps) {
     </svg>
   );
 }
+
+export function DownloadIcon(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" {...props}>
+      <path
+        d="M12 3.75v11.5m0 0 4-4m-4 4-4-4M4.75 18.25h14.5"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}

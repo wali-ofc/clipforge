@@ -14,6 +14,7 @@ from app.api.deps import get_session
 from app.api.errors import api_error
 from app.models.clip import Clip
 from app.schemas.clip import ClipRead
+from app.utils.files import sanitize_display_filename
 from app.utils.paths import resolve_stored_path
 
 logger = logging.getLogger(__name__)
@@ -39,11 +40,18 @@ def get_clip(
 def get_clip_file(
     clip_id: UUID,
     request: Request,
+    download: bool = False,
     session: Session = Depends(get_session),
 ) -> FileResponse:
-    """Serve a rendered clip file once Phase 5 has produced it."""
+    """Stream or download a rendered 9:16 portrait MP4 clip file.
+
+    The browser never receives a filesystem path. Files are resolved from the
+    clip's stored relative path, which is checked against ``DATA_DIR`` before
+    use. ``download=true`` switches the response to an attachment with a safe
+    name derived from the clip title.
+    """
     clip = _get_clip_or_404(session, clip_id)
-    if not clip.output_filename:
+    if clip.render_status != "completed" or not clip.output_filename:
         raise api_error(
             404,
             "clip_not_rendered",
@@ -68,8 +76,15 @@ def get_clip_file(
             "The rendered clip file is missing.",
         )
 
+    safe_name = (
+        sanitize_display_filename(f"{clip.title}.mp4")
+        if clip.title
+        else Path(clip.output_filename).name
+    )
+
     return FileResponse(
         path,
         media_type="video/mp4",
-        filename=Path(clip.output_filename).name,
+        filename=safe_name,
+        content_disposition_type="attachment" if download else "inline",
     )

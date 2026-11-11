@@ -20,7 +20,7 @@ const features = [
   {
     icon: FileVideoIcon,
     title: "Portrait output",
-    body: "9:16 clips with speaker-aware framing are the target.",
+    body: "9:16 clips with speaker-aware framing, previewable and downloadable.",
   },
 ];
 
@@ -28,7 +28,7 @@ const pipeline = [
   { label: "Upload", note: "live", active: true },
   { label: "Transcribe", note: "live", active: true },
   { label: "Select moments", note: "live", active: true },
-  { label: "Track & render", note: "next", active: false },
+  { label: "Track & render", note: "live", active: true },
 ];
 
 export default function HomePage() {
@@ -45,7 +45,7 @@ export default function HomePage() {
           <div className="reveal lg:pt-7">
             <div className="inline-flex items-center gap-2 rounded-full border border-forge-500/20 bg-forge-500/[0.06] px-3 py-1.5 text-[11px] font-medium text-forge-200">
               <span className="status-dot h-1.5 w-1.5 rounded-full bg-forge-400" />
-              Phase 3 · AI clip selection
+              Phase 6 · results &amp; downloads
             </div>
 
             <h1 className="mt-6 text-balance text-[2.7rem] font-semibold leading-[1.02] tracking-[-0.045em] text-zinc-50 sm:text-6xl">
@@ -63,9 +63,10 @@ export default function HomePage() {
             </p>
             <p className="mt-3 max-w-lg text-sm leading-6 text-zinc-500">
               This build validates your upload, transcribes the audio locally
-              with Whisper, then asks a local Ollama model for self-contained
-              moments. Candidate clips are scored heuristically; speaker
-              tracking and rendering arrive in the next phases.
+              with Whisper, asks a local Ollama model for self-contained
+              moments, then tracks the likely speaker and renders each clip as
+              a 9:16 portrait MP4. Preview and download the results in the
+              browser.
             </p>
 
             <dl className="mt-8 grid gap-3 sm:grid-cols-3">

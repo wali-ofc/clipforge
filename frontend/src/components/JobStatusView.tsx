@@ -8,11 +8,12 @@ import {
   ArrowRightIcon,
   CheckIcon,
   CopyIcon,
+  DownloadIcon,
   FileVideoIcon,
   SpinnerIcon,
   XIcon,
 } from "@/components/icons";
-import { ApiError, getJob, getJobClips } from "@/lib/api";
+import { ApiError, getClipFileUrl, getJob, getJobClips } from "@/lib/api";
 import {
   formatBytes,
   formatDate,
@@ -119,6 +120,23 @@ function trackingTone(clip: Clip): string {
   return "border-white/10 bg-white/[0.03] text-zinc-400";
 }
 
+function fallbackNote(clip: Clip): string | null {
+  switch (clip.speaker_tracking_status) {
+    case "fallback":
+      return "Speaker tracking used a stable fallback face, not active-speaker detection.";
+    case "unavailable":
+      return "Speaker tracking was unavailable; this clip uses a centre crop.";
+    case "failed":
+      return "Speaker tracking failed; this clip uses a centre crop.";
+    case "no_faces":
+      return "No face was detected; this clip uses a centre crop.";
+    case "no_frames":
+      return "No frames could be sampled; this clip uses a centre crop.";
+    default:
+      return null;
+  }
+}
+
 function ClipCard({ clip, index }: { clip: Clip; index: number }) {
   const score = clip.score == null ? null : Math.round(clip.score);
   const confidence =
@@ -126,16 +144,11 @@ function ClipCard({ clip, index }: { clip: Clip; index: number }) {
       ? null
       : Math.round(clip.speaker_tracking_confidence * 100);
   const cropSamples = clip.crop_plan?.samples?.length ?? 0;
-  const renderLabel =
-    clip.render_status === "completed"
-      ? clip.width && clip.height
-        ? `Rendered ${clip.width}×${clip.height} MP4`
-        : "Rendered portrait MP4"
-      : clip.render_status === "failed"
-        ? "Rendering failed"
-        : clip.render_status === "rendering"
-          ? "Rendering…"
-          : "Render pending";
+  const isRendered =
+    clip.render_status === "completed" && Boolean(clip.output_filename);
+  const isRendering = clip.render_status === "rendering";
+  const isFailed = clip.render_status === "failed";
+  const note = fallbackNote(clip);
   const tone =
     score == null
       ? "border-white/10 bg-white/[0.03] text-zinc-400"
@@ -146,11 +159,43 @@ function ClipCard({ clip, index }: { clip: Clip; index: number }) {
           : "border-amber-400/20 bg-amber-400/10 text-amber-200";
 
   return (
-    <article className="rounded-xl border border-white/[0.07] bg-white/[0.018] p-4">
-      <div className="flex items-start justify-between gap-3">
+    <article className="flex flex-col rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4 transition hover:border-white/[0.14] sm:p-5">
+      <div className="relative mx-auto aspect-[9/16] w-full max-w-[220px] overflow-hidden rounded-xl border border-white/[0.08] bg-black/60">
+        {isRendered ? (
+          <video
+            src={getClipFileUrl(clip.id)}
+            controls
+            playsInline
+            preload="metadata"
+            aria-label={`Preview of ${clip.title}`}
+            className="h-full w-full object-contain"
+          />
+        ) : isRendering ? (
+          <div className="flex h-full flex-col items-center justify-center gap-2.5 p-4 text-center">
+            <SpinnerIcon className="h-6 w-6 animate-spin text-forge-400" />
+            <p className="text-xs font-medium text-forge-200">
+              Rendering 9:16 MP4…
+            </p>
+          </div>
+        ) : isFailed ? (
+          <div className="flex h-full flex-col items-center justify-center gap-2 p-4 text-center text-red-300">
+            <AlertIcon className="h-6 w-6 text-red-400" />
+            <p className="text-[11px] font-medium leading-tight">
+              Rendering failed
+            </p>
+          </div>
+        ) : (
+          <div className="flex h-full flex-col items-center justify-center gap-2 p-4 text-center text-zinc-500">
+            <FileVideoIcon className="h-6 w-6" />
+            <p className="text-[11px]">Render pending</p>
+          </div>
+        )}
+      </div>
+
+      <div className="mt-4 flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-600">
-            Candidate {String(index + 1).padStart(2, "0")}
+          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-400">
+            Clip {String(index + 1).padStart(2, "0")}
           </p>
           <h3 className="mt-1.5 text-sm font-semibold leading-5 text-zinc-100">
             {clip.title}
@@ -172,22 +217,32 @@ function ClipCard({ clip, index }: { clip: Clip; index: number }) {
         <p className="mt-2.5 text-xs leading-5 text-zinc-300">{clip.hook}</p>
       ) : null}
       {clip.reason ? (
-        <p className="mt-1.5 text-[11px] leading-5 text-zinc-500">
+        <p className="mt-1.5 text-[11px] leading-5 text-zinc-400">
           {clip.reason}
         </p>
       ) : null}
 
-      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 font-mono text-[10px] text-zinc-500">
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px] text-zinc-400">
         <span>
           {formatDuration(clip.start_seconds)} – {formatDuration(clip.end_seconds)}
         </span>
-        <span>{formatDuration(clip.duration_seconds)} long</span>
-        <span className="text-zinc-600">
-          {clip.start_seconds.toFixed(1)}s – {clip.end_seconds.toFixed(1)}s
+        <span aria-hidden="true" className="text-zinc-700">
+          ·
         </span>
+        <span>{formatDuration(clip.duration_seconds)}</span>
+        {clip.width && clip.height ? (
+          <>
+            <span aria-hidden="true" className="text-zinc-700">
+              ·
+            </span>
+            <span>
+              {clip.width}×{clip.height}
+            </span>
+          </>
+        ) : null}
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-white/[0.05] pt-2.5">
+      <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1.5 border-t border-white/[0.05] pt-2.5">
         <span
           className={[
             "rounded-md border px-1.5 py-0.5 font-mono text-[10px]",
@@ -197,23 +252,41 @@ function ClipCard({ clip, index }: { clip: Clip; index: number }) {
           {trackingLabel(clip)}
         </span>
         {confidence != null ? (
-          <span className="font-mono text-[10px] text-zinc-500">
-            {confidence}% confidence
+          <span className="font-mono text-[10px] text-zinc-400">
+            {confidence}% speaker confidence
           </span>
         ) : null}
         {cropSamples > 0 ? (
-          <span className="font-mono text-[10px] text-zinc-600">
+          <span className="font-mono text-[10px] text-zinc-400">
             {cropSamples} crop samples
           </span>
         ) : null}
       </div>
-      <p className="mt-2 text-[10px] leading-4 text-zinc-600">
-        Heuristic clip potential · {renderLabel}
-      </p>
-      {clip.render_status === "failed" && clip.error ? (
-        <p className="mt-1 text-[10px] leading-4 text-red-300/80">
-          {clip.error}
+
+      {note ? (
+        <p className="mt-2 flex items-start gap-1.5 rounded-lg border border-amber-400/15 bg-amber-400/[0.05] px-2.5 py-2 text-[10px] leading-4 text-amber-200/80">
+          <AlertIcon className="mt-px h-3 w-3 shrink-0" />
+          <span>{note}</span>
         </p>
+      ) : null}
+
+      {isFailed && clip.error ? (
+        <p className="mt-2 text-[10px] leading-4 text-red-300/80">
+          Error: {clip.error}
+        </p>
+      ) : null}
+
+      {isRendered ? (
+        <div className="mt-auto border-t border-white/[0.06] pt-3">
+          <a
+            href={getClipFileUrl(clip.id, true)}
+            download
+            className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-forge-500 px-4 py-2.5 text-xs font-semibold text-[#1b0d04] shadow-[0_10px_24px_-12px_rgba(245,138,59,0.6)] transition hover:bg-forge-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-forge-300"
+          >
+            <DownloadIcon className="h-4 w-4" />
+            Download MP4
+          </a>
+        </div>
       ) : null}
     </article>
   );
@@ -411,8 +484,8 @@ export function JobStatusView({ jobId }: { jobId: string }) {
         >
           <span aria-hidden="true">←</span> Upload another video
         </Link>
-        <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-700">
-          Phase 5 · clip rendering
+        <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-600">
+          Phase 6 · results &amp; downloads
         </span>
       </div>
 
@@ -548,14 +621,14 @@ export function JobStatusView({ jobId }: { jobId: string }) {
                     {job.has_speech === false
                       ? "No useful speech found"
                       : job.clip_count > 0
-                        ? "Clips rendered"
+                        ? "Clips rendered & ready to download"
                         : "No candidate clips found"}
                   </h2>
                   <p className="mt-1 text-sm leading-6 text-forge-200/65">
                     {job.has_speech === false
                       ? "The audio was processed but produced no usable speech segments. No clips were selected; speaker tracking and rendering were skipped."
                       : job.clip_count > 0
-                        ? `${job.clip_count} candidate moment${job.clip_count === 1 ? "" : "s"} selected with ${job.clip_selection_model ?? "the local model"}. Scores are heuristic clip potential, not virality predictions. Speaker-aware crop plans were used to render 9:16 portrait MP4s. Previews and downloads arrive in Phase 6.`
+                        ? `${job.clip_count} short clip${job.clip_count === 1 ? "" : "s"} extracted and rendered in 9:16 portrait with speaker-aware framing. Preview each clip and download the MP4 below.`
                         : "The transcript was processed, but no self-contained moment fit the configured duration range. Try a longer recording or adjust the clip limits."}
                   </p>
                 </div>
@@ -581,22 +654,21 @@ export function JobStatusView({ jobId }: { jobId: string }) {
               ) : clips.length === 0 ? (
                 <p className="text-xs text-zinc-500">Loading clip candidates…</p>
               ) : (
-                <div className="grid gap-3 lg:grid-cols-2">
+                <div className="grid gap-4 sm:grid-cols-2">
                   {clips.map((clip, index) => (
                     <ClipCard key={clip.id} clip={clip} index={index} />
                   ))}
                 </div>
               )}
 
-              <p className="mt-4 text-[11px] leading-5 text-zinc-600">
-                Clip potential is a deterministic weighted score from hook,
-                clarity, payoff, interest, and conciseness. It is not a viral
-                probability. Crop plans are sampled only inside each candidate
-                range. When active-speaker confidence is low or a face is
-                missing, the planner uses an explicit stable fallback instead
-                of claiming tracking. Each selected clip is rendered as an
-                H.264/AAC MP4 at the configured portrait resolution. Previews
-                and downloads arrive in Phase 6.
+              <p className="mt-4 text-[11px] leading-5 text-zinc-400">
+                Clips are H.264 video with AAC audio in 9:16 portrait at the
+                configured resolution. Clip potential is a deterministic
+                weighted score from hook, clarity, payoff, interest, and
+                conciseness — not a virality prediction. When active-speaker
+                confidence is low or a face is missing, the planner uses an
+                explicit fallback and the card says so instead of claiming
+                speaker tracking.
               </p>
             </section>
           ) : null}

@@ -9,6 +9,7 @@ import pytest
 
 from app.config import Settings
 from app.main import create_app
+from app.models.clip import Clip
 from app.models.job import Job
 
 
@@ -320,6 +321,38 @@ def test_long_video_produces_candidate_clips(client, long_sample_video):
     file_response = client.get(f"/api/clips/{clip['id']}/file")
     assert file_response.status_code == 200
     assert file_response.headers["content-type"] == "video/mp4"
+    assert "inline" in file_response.headers.get("content-disposition", "")
+    assert file_response.headers.get("accept-ranges") == "bytes"
+
+    download_response = client.get(
+        f"/api/clips/{clip['id']}/file?download=true"
+    )
+    assert download_response.status_code == 200
+    assert download_response.headers["content-type"] == "video/mp4"
+    disposition = download_response.headers.get("content-disposition", "")
+    assert disposition.startswith("attachment")
+    assert ".mp4" in disposition
+
+
+def test_clip_file_requires_completed_render(client, long_sample_video):
+    response = _upload(client, long_sample_video)
+    assert response.status_code == 202
+    job_id = response.json()["id"]
+    assert client.app.state.worker.run_once() is True
+
+    clip = client.get(f"/api/jobs/{job_id}/clips").json()[0]
+    assert clip["render_status"] == "completed"
+
+    # A stored output path alone is not enough; the render must be complete.
+    session_factory = client.app.state.session_factory
+    with session_factory() as session:
+        row = session.get(Clip, clip["id"])
+        row.render_status = "pending"
+        session.commit()
+
+    file_response = client.get(f"/api/clips/{clip['id']}/file")
+    assert file_response.status_code == 404
+    assert file_response.json()["detail"]["code"] == "clip_not_rendered"
 
 
 def test_rendering_failure_marks_clip_failed(
