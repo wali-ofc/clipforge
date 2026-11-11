@@ -17,6 +17,7 @@ from app.db import (
     init_db,
 )
 from app.services.clip_selection import ClipSelector
+from app.services.rendering import ClipRenderer
 from app.services.speaker_tracking import SpeakerTracker
 from app.services.tooling import (
     check_face_detection,
@@ -45,6 +46,7 @@ def create_app(
     transcriber: Transcriber | None = None,
     selector: ClipSelector | None = None,
     speaker_tracker: SpeakerTracker | None = None,
+    renderer: ClipRenderer | None = None,
 ) -> FastAPI:
     resolved_settings = settings or get_settings()
 
@@ -104,6 +106,7 @@ def create_app(
             transcriber=transcriber,
             selector=selector,
             speaker_tracker=speaker_tracker,
+            renderer=renderer,
         )
         app.state.worker = worker
         if resolved_settings.worker_autostart:

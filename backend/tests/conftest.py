@@ -18,6 +18,7 @@ from app.services.clip_selection import (
     deduplicate_candidates,
 )
 from app.services.face_detection import FaceBox
+from app.services.rendering import RenderResult, RenderingError
 from app.services.speaker_tracking import (
     SpeakerTrackingError,
     SpeakerTrackingResult,
@@ -220,6 +221,44 @@ class StubSpeakerTracker:
         )
 
 
+class StubRenderer:
+    """Deterministic clip renderer used by tests; writes a minimal dummy file."""
+
+    name = "stub-renderer"
+
+    def __init__(self, settings: Settings, *, fail: bool = False) -> None:
+        self.settings = settings
+        self.fail = fail
+
+    def render_clip(
+        self,
+        source_path: Path,
+        clip: Any,
+        output_path: Path,
+        settings: Settings,
+        work_dir: Path,
+        *,
+        has_audio: bool = True,
+        source_width: int | None = None,
+        source_height: int | None = None,
+    ) -> RenderResult:
+        if self.fail:
+            raise RenderingError(
+                "rendering_failed",
+                "Simulated rendering failure.",
+            )
+
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_bytes(b"\x00" * 256)
+        return RenderResult(
+            output_path=output_path,
+            width=settings.output_width,
+            height=settings.output_height,
+            duration_seconds=clip.duration_seconds,
+            file_size_bytes=256,
+        )
+
+
 def _ffmpeg_command(settings: Settings, args: list[str]) -> list[str]:
     return [
         settings.ffmpeg_bin,
@@ -255,6 +294,7 @@ def app(settings: Settings):
         transcriber=StubTranscriber(),
         selector=StubSelector(settings),
         speaker_tracker=StubSpeakerTracker(settings),
+        renderer=StubRenderer(settings),
     )
 
 
@@ -271,6 +311,7 @@ def no_speech_client(settings: Settings):
         transcriber=StubTranscriber(has_speech=False),
         selector=StubSelector(settings),
         speaker_tracker=StubSpeakerTracker(settings),
+        renderer=StubRenderer(settings),
     )
     with TestClient(app) as test_client:
         yield test_client
@@ -283,6 +324,7 @@ def failing_client(settings: Settings):
         transcriber=StubTranscriber(fail=True),
         selector=StubSelector(settings),
         speaker_tracker=StubSpeakerTracker(settings),
+        renderer=StubRenderer(settings),
     )
     with TestClient(app) as test_client:
         yield test_client
@@ -295,6 +337,7 @@ def failing_selector_client(settings: Settings):
         transcriber=StubTranscriber(),
         selector=StubSelector(settings, fail=True),
         speaker_tracker=StubSpeakerTracker(settings),
+        renderer=StubRenderer(settings),
     )
     with TestClient(app) as test_client:
         yield test_client
@@ -307,6 +350,20 @@ def failing_tracker_client(settings: Settings):
         transcriber=StubTranscriber(),
         selector=StubSelector(settings),
         speaker_tracker=StubSpeakerTracker(settings, fail=True),
+        renderer=StubRenderer(settings),
+    )
+    with TestClient(app) as test_client:
+        yield test_client
+
+
+@pytest.fixture
+def failing_renderer_client(settings: Settings):
+    app = create_app(
+        settings,
+        transcriber=StubTranscriber(),
+        selector=StubSelector(settings),
+        speaker_tracker=StubSpeakerTracker(settings),
+        renderer=StubRenderer(settings, fail=True),
     )
     with TestClient(app) as test_client:
         yield test_client

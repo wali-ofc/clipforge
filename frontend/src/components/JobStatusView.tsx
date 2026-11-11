@@ -126,6 +126,16 @@ function ClipCard({ clip, index }: { clip: Clip; index: number }) {
       ? null
       : Math.round(clip.speaker_tracking_confidence * 100);
   const cropSamples = clip.crop_plan?.samples?.length ?? 0;
+  const renderLabel =
+    clip.render_status === "completed"
+      ? clip.width && clip.height
+        ? `Rendered ${clip.width}×${clip.height} MP4`
+        : "Rendered portrait MP4"
+      : clip.render_status === "failed"
+        ? "Rendering failed"
+        : clip.render_status === "rendering"
+          ? "Rendering…"
+          : "Render pending";
   const tone =
     score == null
       ? "border-white/10 bg-white/[0.03] text-zinc-400"
@@ -198,8 +208,13 @@ function ClipCard({ clip, index }: { clip: Clip; index: number }) {
         ) : null}
       </div>
       <p className="mt-2 text-[10px] leading-4 text-zinc-600">
-        Heuristic clip potential · 9:16 rendering pending
+        Heuristic clip potential · {renderLabel}
       </p>
+      {clip.render_status === "failed" && clip.error ? (
+        <p className="mt-1 text-[10px] leading-4 text-red-300/80">
+          {clip.error}
+        </p>
+      ) : null}
     </article>
   );
 }
@@ -397,7 +412,7 @@ export function JobStatusView({ jobId }: { jobId: string }) {
           <span aria-hidden="true">←</span> Upload another video
         </Link>
         <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-700">
-          Phase 4 · speaker tracking
+          Phase 5 · clip rendering
         </span>
       </div>
 
@@ -533,14 +548,14 @@ export function JobStatusView({ jobId }: { jobId: string }) {
                     {job.has_speech === false
                       ? "No useful speech found"
                       : job.clip_count > 0
-                        ? "Clip candidates ready"
+                        ? "Clips rendered"
                         : "No candidate clips found"}
                   </h2>
                   <p className="mt-1 text-sm leading-6 text-forge-200/65">
                     {job.has_speech === false
-                      ? "The audio was processed but produced no usable speech segments. No clips were selected; speaker tracking and rendering are not enabled."
+                      ? "The audio was processed but produced no usable speech segments. No clips were selected; speaker tracking and rendering were skipped."
                       : job.clip_count > 0
-                        ? `${job.clip_count} candidate moment${job.clip_count === 1 ? "" : "s"} selected with ${job.clip_selection_model ?? "the local model"}. Scores are heuristic clip potential, not virality predictions. Speaker-aware crop plans are ready; 9:16 rendering arrives in Phase 5.`
+                        ? `${job.clip_count} candidate moment${job.clip_count === 1 ? "" : "s"} selected with ${job.clip_selection_model ?? "the local model"}. Scores are heuristic clip potential, not virality predictions. Speaker-aware crop plans were used to render 9:16 portrait MP4s. Previews and downloads arrive in Phase 6.`
                         : "The transcript was processed, but no self-contained moment fit the configured duration range. Try a longer recording or adjust the clip limits."}
                   </p>
                 </div>
@@ -552,7 +567,7 @@ export function JobStatusView({ jobId }: { jobId: string }) {
             <section className="rounded-2xl border border-white/10 bg-surface-900/60 p-5 sm:p-6">
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">
-                  Candidate clips
+                  Rendered clips
                 </h2>
                 <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-700">
                   {job.clip_selection_model ?? "local model"} · heuristic score
@@ -579,7 +594,9 @@ export function JobStatusView({ jobId }: { jobId: string }) {
                 probability. Crop plans are sampled only inside each candidate
                 range. When active-speaker confidence is low or a face is
                 missing, the planner uses an explicit stable fallback instead
-                of claiming tracking. Rendering is not enabled yet.
+                of claiming tracking. Each selected clip is rendered as an
+                H.264/AAC MP4 at the configured portrait resolution. Previews
+                and downloads arrive in Phase 6.
               </p>
             </section>
           ) : null}

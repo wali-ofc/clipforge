@@ -9,6 +9,7 @@ clip proposals. Later phases will continue from those proposals.
 from __future__ import annotations
 
 import logging
+import shutil
 import time
 import uuid
 from pathlib import Path
@@ -27,6 +28,7 @@ from app.services.clip_selection import (
     OllamaClipSelector,
 )
 from app.services.media_probe import MediaProbeError, probe_media
+from app.services.rendering import ClipRenderer, FFmpegClipRenderer
 from app.services.speaker_tracking import (
     OpenCVSpeakerTracker,
     SpeakerTracker,
@@ -41,6 +43,7 @@ from app.services.transcription import (
     unload_whisper_models,
 )
 from app.utils.paths import (
+    job_clips_dir,
     job_work_dir,
     relative_to_data_dir,
     resolve_stored_path,
@@ -93,8 +96,9 @@ def process_job(
     transcriber: Transcriber | None = None,
     selector: ClipSelector | None = None,
     speaker_tracker: SpeakerTracker | None = None,
+    renderer: ClipRenderer | None = None,
 ) -> None:
-    """Run inspection, transcription, selection, and crop planning for a job."""
+    """Run inspection, transcription, selection, crop planning, and rendering for a job."""
     job_id = job.id
 
     try:
@@ -181,11 +185,28 @@ def process_job(
                     source_path,
                     speaker_tracker,
                 )
-                message = (
-                    f"Clip selection complete: {len(candidates)} candidate "
-                    f"clip(s) proposed by {model_name or 'the selector'}. "
-                    "Speaker-aware crop plans generated."
+                rendered_count = _render_clips_with_progress(
+                    session,
+                    job,
+                    settings,
+                    source_path,
+                    renderer,
+                    has_audio=info.has_audio,
+                    source_width=info.width,
+                    source_height=info.height,
                 )
+                _cleanup_temp_files(settings, job.id)
+
+                if rendered_count > 0:
+                    message = (
+                        f"Rendering complete: {rendered_count}/{len(candidates)} "
+                        f"clip(s) rendered in 9:16 portrait format."
+                    )
+                else:
+                    message = (
+                        f"Clip selection complete ({len(candidates)} candidate moments), "
+                        f"but rendering failed for all clips."
+                    )
             else:
                 message = (
                     "No candidate clips were selected. The transcript may be "
@@ -383,7 +404,7 @@ def _track_clips_with_progress(
             clip.tracking_details = fallback.details
 
         clip.updated_at = utc_now()
-        progress = 97 + int(round(2 * (index + 1) / total))
+        progress = 97 + int(round(1 * (index + 1) / total))
         apply_progress(
             job,
             progress,
@@ -391,6 +412,94 @@ def _track_clips_with_progress(
             JobState.tracking_speakers,
         )
         session.commit()
+
+
+def _render_clips_with_progress(
+    session: Session,
+    job: Job,
+    settings: Settings,
+    source_path: Path,
+    renderer: ClipRenderer | None,
+    *,
+    has_audio: bool = True,
+    source_width: int | None = None,
+    source_height: int | None = None,
+) -> int:
+    """Render 9:16 portrait MP4s for all candidate clips with monotonic progress."""
+    active_renderer = renderer or FFmpegClipRenderer(settings)
+    clips = list(
+        session.execute(
+            select(Clip)
+            .where(Clip.job_id == job.id)
+            .order_by(Clip.start_seconds.asc())
+        )
+        .scalars()
+        .all()
+    )
+    if not clips:
+        return 0
+
+    apply_progress(
+        job,
+        98,
+        "Rendering 9:16 portrait clips",
+        JobState.rendering,
+    )
+    session.commit()
+
+    total = len(clips)
+    rendered_count = 0
+    work_dir = job_work_dir(settings, job.id)
+    clips_dir = job_clips_dir(settings, job.id)
+
+    for index, clip in enumerate(clips):
+        clip.render_status = "rendering"
+        session.commit()
+
+        output_path = clips_dir / f"{clip.id}.mp4"
+        try:
+            result = active_renderer.render_clip(
+                source_path,
+                clip,
+                output_path,
+                settings,
+                work_dir,
+                has_audio=has_audio,
+                source_width=source_width,
+                source_height=source_height,
+            )
+            clip.output_filename = relative_to_data_dir(settings, result.output_path)
+            clip.width = result.width
+            clip.height = result.height
+            clip.render_status = "completed"
+            clip.error = None
+            rendered_count += 1
+        except Exception as exc:  # noqa: BLE001 - individual clip failures don't crash pipeline
+            logger.exception("Rendering failed for clip %s", clip.id)
+            output_path.unlink(missing_ok=True)
+            clip.render_status = "failed"
+            clip.error = str(exc)
+            clip.output_filename = None
+
+        clip.updated_at = utc_now()
+        progress = 98 + int(round(1 * (index + 1) / total))
+        apply_progress(
+            job,
+            progress,
+            f"Rendering 9:16 portrait clips ({index + 1}/{total})",
+            JobState.rendering,
+        )
+        session.commit()
+
+    return rendered_count
+
+
+def _cleanup_temp_files(settings: Settings, job_id: str) -> None:
+    work_dir = job_work_dir(settings, job_id)
+    for subdir_name in ("tracking", "render"):
+        target = work_dir / subdir_name
+        if target.exists():
+            shutil.rmtree(target, ignore_errors=True)
 
 
 def _replace_clips(

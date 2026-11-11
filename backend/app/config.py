@@ -103,8 +103,10 @@ class Settings(BaseSettings):
     # Rendering (Phase 5)
     output_width: int = Field(default=1080, gt=0)
     output_height: int = Field(default=1920, gt=0)
+    output_fps: float = Field(default=30.0, gt=0, le=120)
     output_crf: int = Field(default=23, ge=0, le=51)
     output_preset: str = "veryfast"
+    render_timeout_seconds: float = Field(default=600.0, gt=0)
 
     # Face sampling and speaker tracking (Phase 4)
     face_sample_fps: float = Field(default=2.0, gt=0, le=15.0)

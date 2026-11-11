@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.config import Settings
 from app.models.job import ACTIVE_JOB_STATES, Job, JobState
 from app.services.clip_selection import ClipSelector
+from app.services.rendering import ClipRenderer
 from app.services.speaker_tracking import SpeakerTracker
 from app.services.transcription import Transcriber
 from app.utils.time import utc_now
@@ -58,12 +59,14 @@ class JobWorker:
         transcriber: Transcriber | None = None,
         selector: ClipSelector | None = None,
         speaker_tracker: SpeakerTracker | None = None,
+        renderer: ClipRenderer | None = None,
     ) -> None:
         self.settings = settings
         self.session_factory = session_factory
         self.transcriber = transcriber
         self.selector = selector
         self.speaker_tracker = speaker_tracker
+        self.renderer = renderer
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
         self._run_once_guard = threading.Lock()
@@ -121,5 +124,6 @@ class JobWorker:
                     self.transcriber,
                     self.selector,
                     self.speaker_tracker,
+                    self.renderer,
                 )
                 return True

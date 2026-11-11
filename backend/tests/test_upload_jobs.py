@@ -274,7 +274,7 @@ def test_long_video_produces_candidate_clips(client, long_sample_video):
     assert payload["state"] == "completed"
     assert payload["clip_count"] >= 1
     assert payload["clip_selection_model"] == "stub-selector"
-    assert "Clip selection complete" in payload["stage_message"]
+    assert "Rendering complete" in payload["stage_message"]
 
     clips_response = client.get(f"/api/jobs/{job_id}/clips")
     assert clips_response.status_code == 200
@@ -302,7 +302,10 @@ def test_long_video_produces_candidate_clips(client, long_sample_video):
         "weights",
         "method",
     } <= set(clip["component_scores"])
-    assert clip["render_status"] == "pending"
+    assert clip["render_status"] == "completed"
+    assert clip["output_filename"] is not None
+    assert clip["width"] == 1080
+    assert clip["height"] == 1920
     assert clip["speaker_tracking_status"] == "tracked"
     assert clip["speaker_tracking_confidence"] == pytest.approx(0.9)
     assert clip["crop_plan"]["coordinate_space"] == "source_pixels"
@@ -315,6 +318,33 @@ def test_long_video_produces_candidate_clips(client, long_sample_video):
     assert metadata.json()["id"] == clip["id"]
 
     file_response = client.get(f"/api/clips/{clip['id']}/file")
+    assert file_response.status_code == 200
+    assert file_response.headers["content-type"] == "video/mp4"
+
+
+def test_rendering_failure_marks_clip_failed(
+    failing_renderer_client, long_sample_video
+):
+    response = _upload(failing_renderer_client, long_sample_video)
+    assert response.status_code == 202
+    job_id = response.json()["id"]
+
+    worker = failing_renderer_client.app.state.worker
+    assert worker.run_once() is True
+
+    detail = failing_renderer_client.get(f"/api/jobs/{job_id}")
+    assert detail.status_code == 200
+    payload = detail.json()
+    assert payload["state"] == "completed"
+    assert payload["clip_count"] >= 1
+    assert "rendering failed for all clips" in payload["stage_message"]
+
+    clip = failing_renderer_client.get(f"/api/jobs/{job_id}/clips").json()[0]
+    assert clip["render_status"] == "failed"
+    assert "Simulated rendering failure" in (clip["error"] or "")
+    assert clip["output_filename"] is None
+
+    file_response = failing_renderer_client.get(f"/api/clips/{clip['id']}/file")
     assert file_response.status_code == 404
     assert file_response.json()["detail"]["code"] == "clip_not_rendered"
 

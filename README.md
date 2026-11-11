@@ -2,8 +2,8 @@
 
 Local-first AI video clipping. Long recordings go in; short vertical clips come out — processed entirely on your machine, with no cloud services and no accounts.
 
-> **Build status: Phase 0 + Phase 1 + Phase 2 + Phase 3 + Phase 4 complete.**
-> Uploads are streamed to disk, validated with `ffprobe`, persisted in SQLite, and processed by a single background worker. The worker extracts audio with FFmpeg, transcribes it locally with faster-whisper, asks a local Ollama model for self-contained candidate moments, then samples frames only inside each selected candidate to build face tracks, estimate the likely active speaker, and produce a smoothed 9:16 crop plan. Captions and rendered clip files are **not implemented yet**.
+> **Build status: Phase 0 + Phase 1 + Phase 2 + Phase 3 + Phase 4 + Phase 5 complete.**
+> Uploads are streamed to disk, validated with `ffprobe`, persisted in SQLite, and processed by a single background worker. The worker extracts audio with FFmpeg, transcribes it locally with faster-whisper, asks a local Ollama model for self-contained candidate moments, samples frames only inside each selected candidate to build face tracks and a smoothed 9:16 crop plan, then renders every selected clip as a verified H.264/AAC MP4 with a time-varying portrait crop. Captions and music are still **not implemented**, by design.
 
 ## What works today
 
@@ -22,10 +22,13 @@ Local-first AI video clipping. Long recordings go in; short vertical clips come 
 - Face-track association across samples, heuristic active-speaker estimation, and a stable largest/central-face fallback
 - Time-indexed crop plans in source-frame pixels with EMA smoothing, a dead zone, a crop-speed limit, and interpolation for rendering
 - Explicit tracking status and confidence on every clip; detection failure holds the last stable crop briefly and then centres
-- Minimal Next.js UI: drag/drop upload, upload progress, live job status polling, transcript summary, candidate clip cards with tracking status, error states
-- Metadata, transcript, clip proposals, and crop plans exposed over the API; rendered clip files are not produced yet
+- Per-clip FFmpeg rendering with a time-varying 9:16 crop driven by the stored plan, H.264 video, AAC audio, and `+faststart`
+- Every rendered file is probed with ffprobe for dimensions, codecs, container, audio presence, frame rate, and duration before it is marked complete
+- Configurable output resolution (`1080×1920` default, `720×1280` supported), frame rate, CRF, preset, and render timeout
+- Minimal Next.js UI: drag/drop upload, upload progress, live job status polling, transcript summary, clip cards with tracking and render status, error states
+- Metadata, transcript, clip proposals, crop plans, and rendered MP4 files exposed over the API
 
-Captions are intentionally **not** generated or burned into any video. The transcript is internal pipeline data.
+Captions are intentionally **not** generated or burned into any video. The transcript is internal pipeline data. No music, text, or watermark is added during rendering.
 
 ## Repository layout
 
@@ -37,13 +40,13 @@ clipforge/
 │   │   ├── models/       # SQLAlchemy Job and Clip models
 │   │   ├── prompts/      # editable clip-selection prompt
 │   │   ├── schemas/      # Pydantic response, transcript, and LLM models
-│   │   ├── services/     # probing, tool checks, transcription, Ollama, selection, face tracking
+│   │   ├── services/     # probing, tool checks, transcription, Ollama, selection, tracking, rendering
 │   │   ├── utils/        # config-independent helpers (files, paths, subprocess)
-│   │   ├── worker/       # queue runner and inspection/transcription/selection/tracking pipeline
+│   │   ├── worker/       # queue runner and inspection/transcription/selection/tracking/render pipeline
 │   │   ├── config.py     # typed settings
 │   │   ├── db.py         # engine, sessions, schema creation + additive migrations
 │   │   └── main.py       # FastAPI app + lifespan
-│   ├── tests/            # 117 pytest tests
+│   ├── tests/            # 138 pytest tests
 │   ├── data/             # runtime only, gitignored
 │   ├── requirements.lock.txt
 │   ├── pyproject.toml
@@ -213,8 +216,13 @@ Relative paths resolve against `backend/`, not the current shell directory.
 | `CROP_DEAD_ZONE_RATIO` | `0.015` | Dead zone as a fraction of crop width |
 | `CROP_MAX_SPEED_RATIO` | `0.5` | Maximum crop movement in crop widths per second |
 | `CROP_HOLD_SECONDS` | `2.0` | Hold the last stable crop after detection disappears |
+| `OUTPUT_WIDTH` / `OUTPUT_HEIGHT` | `1080` / `1920` | Portrait output resolution; must be even and 9:16 (`720×1280` also valid) |
+| `OUTPUT_FPS` | `30` | Constant output frame rate; broad player compatibility |
+| `OUTPUT_CRF` | `23` | H.264 quality (lower is larger/better, `0–51`) |
+| `OUTPUT_PRESET` | `veryfast` | x264 speed/size preset |
+| `RENDER_TIMEOUT_SECONDS` | `600` | Per-clip FFmpeg render timeout |
 
-Output dimensions (`OUTPUT_WIDTH` / `OUTPUT_HEIGHT`, `OUTPUT_CRF`, `OUTPUT_PRESET`) are defined and validated for Phase 5 but are not used for rendering yet. Output dimensions must be an even portrait 9:16 ratio; the crop planner derives its target aspect from them (default `1080×1920`; `720×1280` is also valid). Clip minimum must be below maximum.
+Output dimensions must be an even portrait 9:16 ratio; the crop planner derives its target aspect from them. `720×1280` is supported for faster or smaller renders. Clip minimum must be below maximum.
 
 The selection prompt itself is editable at `backend/app/prompts/clip_selection.txt`. It is re-read on every job, so prompt changes take effect without restarting the backend. Duration limits, clip count, and score weights are configuration, not prompt text.
 
@@ -228,7 +236,7 @@ The selection prompt itself is editable at `backend/app/prompts/clip_selection.t
 | `GET` | `/api/jobs/{id}/transcript` | Timestamped transcript JSON (internal pipeline data) |
 | `GET` | `/api/jobs/{id}/clips` | Stored candidate clips for a job |
 | `GET` | `/api/clips/{id}` | One clip's metadata, heuristic score, tracking status, and crop plan |
-| `GET` | `/api/clips/{id}/file` | Rendered clip file; `404 clip_not_rendered` until Phase 5 |
+| `GET` | `/api/clips/{id}/file` | Rendered portrait MP4; `404 clip_not_rendered` until rendering succeeds |
 
 Errors use a consistent shape:
 
@@ -240,9 +248,9 @@ Status codes: `400 empty_file`, `404 job_not_found`, `404 transcript_not_found`,
 
 ### Job states and progress
 
-`queued → inspecting → transcribing → selecting_clips → tracking_speakers → completed | failed`
+`queued → inspecting → transcribing → selecting_clips → tracking_speakers → rendering → completed | failed`
 
-Progress is monotonic: `5` on inspection, `15` when audio preparation starts, `20–80` during transcription, `82` while the transcript is saved, `84–97` during clip selection, `97–99` during speaker tracking and crop planning, and `100` on completion. A job with silent audio or no audio stream still completes with an empty transcript and `has_speech=false`; selection and tracking are skipped. `rendering` and `cancelled` exist in the enum so later phases and clients do not need a schema change.
+Progress is monotonic: `5` on inspection, `15` when audio preparation starts, `20–80` during transcription, `82` while the transcript is saved, `84–97` during clip selection, `97–98` during speaker tracking and crop planning, `98–99` while clips render, and `100` on completion. A job with silent audio or no audio stream still completes with an empty transcript and `has_speech=false`; selection, tracking, and rendering are skipped. `cancelled` exists in the enum so later phases and clients do not need a schema change.
 
 Clip selection failures are explicit: if Ollama is unreachable or the configured model is missing, the job fails with a message naming the fix. If the model returns malformed output for one window, that window is skipped and the rest continue. If every window is malformed or no proposal fits the limits, the job completes with zero clips and a clear stage message rather than crashing the worker.
 
@@ -296,7 +304,7 @@ Speaker tracking runs only after clip selection and only inside each candidate r
 2. **Tracks.** Boxes are associated across samples by IoU, with a centre-distance fallback for small movements and short gaps (`FACE_TRACK_*`). Each track keeps its observations and a cheap lower-face motion signal.
 3. **Active speaker.** With one visible face, that face is used. With several, each candidate is scored from face size, centrality, continuity with the previous choice, transcript speech timing, mouth-region motion, and detector confidence. If the resulting confidence is below `SPEAKER_CONFIDENCE_THRESHOLD`, the planner keeps a stable largest/central face (with `SPEAKER_SWITCH_MARGIN` hysteresis) instead of switching rapidly.
 4. **Crop geometry.** The planner works in source pixels. For a wide source it uses the full height, so a 9:16 crop is `source_height * 9 / 16` wide; a source already narrower than the target uses full width and crops height. The crop is always clamped inside the source. A source already at 9:16 is not cropped unnecessarily.
-5. **Smoothing.** Crop centres are smoothed with an EMA (`CROP_EMA_ALPHA`), a dead zone (`CROP_DEAD_ZONE_RATIO` of crop width), and a speed limit (`CROP_MAX_SPEED_RATIO` crop widths per second). Samples are stored at clip-relative timestamps; Phase 5 will interpolate between them with `interpolate_crop()`.
+5. **Smoothing.** Crop centres are smoothed with an EMA (`CROP_EMA_ALPHA`), a dead zone (`CROP_DEAD_ZONE_RATIO` of crop width), and a speed limit (`CROP_MAX_SPEED_RATIO` crop widths per second). Samples are stored at clip-relative timestamps; rendering interpolates between them with `interpolate_crop()`.
 6. **Fallback.** If a face disappears, the last stable crop is held for `CROP_HOLD_SECONDS`, then the plan moves to a centred crop. If detection cannot run at all, every clip still receives an explicit centred plan and status; the job is never failed by tracking.
 
 Tracking is persisted per clip as `speaker_tracking_status`, `speaker_tracking_confidence`, `crop_plan`, and `tracking_details`. Statuses are `tracked`, `single_face`, `fallback`, `no_faces`, `no_frames`, `unavailable`, `failed`, and `pending`. A centred crop is always labelled as such; it is never presented as successful tracking.
@@ -331,6 +339,20 @@ The active-speaker estimate is a heuristic. **No lip-sync or speaker-diarization
 
 `tracking_details` records the method, detector, sampling rate, sampled/face frame counts, track and speech-interval counts, fallback behaviour, limitations, and a status reason or error code when applicable.
 
+### Clip rendering
+
+Rendering runs after tracking, for every stored candidate. Each clip is cut from the original source at its stored `start_seconds`/`end_seconds`, reframed to 9:16, and encoded as its own MP4 under `backend/data/clips/{job_id}/{clip_id}.mp4`. The source is streamed by FFmpeg; it is never decoded into application memory.
+
+1. **Dynamic crop.** The stored crop plan is interpolated at clip-relative time. FFmpeg's `crop` filter receives `x`/`y` updates through a generated `sendcmd` command file at 25 Hz (`CROP_COMMAND_STEP_SECONDS`). Crop width/height are fixed per clip from the same target-aspect geometry used by the tracker, rounded to even values for 4:2:0.
+2. **Scale and encode.** The cropped frame is scaled to `OUTPUT_WIDTH`×`OUTPUT_HEIGHT` with bicubic filtering, given square pixels (`setsar=1`), and converted to `yuv420p`. Video is H.264 (`libx264`) with configurable `OUTPUT_CRF` and `OUTPUT_PRESET`; audio is AAC at 192 kbit/s. `+faststart` moves the MP4 index to the front for streaming.
+3. **Frame rate.** Output is constant `OUTPUT_FPS` (default 30) for broad player compatibility, regardless of the source's frame rate.
+4. **Stream mapping.** Only the first video stream and, when the source has audio, the first audio stream are mapped. Subtitles and data streams are explicitly excluded (`-sn`, `-dn`). No text, watermark, music, or caption filter is ever added.
+5. **Verification.** Every output is probed with ffprobe before the clip is marked `completed`. Dimensions must equal the configured resolution, video must be H.264, container must be MP4, audio must be present and AAC when the source had audio, frame rate must match `OUTPUT_FPS`, and duration must be within `max(0.6 s, 4%)` of the clip duration. A failed check deletes the partial file and records a per-clip error.
+
+**Tradeoffs.** A per-frame crop expression would be enormous for long clips and risks Windows command-line limits. The `sendcmd` approach keeps the command line short and memory flat, at the cost of updating the crop position every 40 ms rather than on every output frame. Because the command interval is finer than a 30 fps frame and the plan is already smoothed, the difference is not visible. The command file is temporary and lives under `work/{job_id}/render`; it is deleted after each clip, and the render/tracking directories are removed when the job finishes.
+
+A single clip failure does not fail the job. The clip is marked `failed` with its error, its `output_filename` is cleared, and the remaining clips continue. If every clip fails, the job still completes with an explicit stage message; `/api/clips/{id}/file` returns `404 clip_not_rendered` for failed clips.
+
 ## Storage
 
 ```
@@ -340,12 +362,13 @@ backend/data/
 ├── uploads/<job-uuid>/source.mp4
 ├── work/<job-uuid>/transcript.json
 ├── work/<job-uuid>/tracking/<clip-uuid>/   # temporary sampled frames, deleted after tracking
-└── clips/<job-uuid>/            # reserved for rendered output (Phase 5)
+├── work/<job-uuid>/render/                 # temporary crop command files, deleted after rendering
+└── clips/<job-uuid>/<clip-uuid>.mp4        # verified portrait output
 ```
 
-Clip proposals are stored as rows in `clips` with start/end/duration, title, hook, reason, score, component scores, speaker-tracking status/confidence, crop plan, tracking details, and `pending` render status. No clip video files are produced yet, so `/api/clips/{id}/file` returns `404 clip_not_rendered`.
+Clip rows store start/end/duration, title, hook, reason, score, component scores, speaker-tracking status/confidence, crop plan, tracking details, render status/error, output path, and output dimensions. Rendered files are served by `/api/clips/{id}/file`; a clip is downloadable only after it has been marked `completed`.
 
-During transcription, FFmpeg writes `work/<job-uuid>/audio.wav` (16 kHz mono PCM). It is deleted after transcription; only `transcript.json` remains. Paths are derived from the job UUID only. The original filename is stored as display metadata and sanitized; it is never used to build a filesystem path. Stored relative paths are checked against `DATA_DIR` before use.
+During transcription, FFmpeg writes `work/<job-uuid>/audio.wav` (16 kHz mono PCM). It is deleted after transcription; only `transcript.json` remains. Tracking and render temporary directories are removed when the job finishes, and only verified clip MP4s remain under `clips/`. Paths are derived from the job UUID only. The original filename is stored as display metadata and sanitized; it is never used to build a filesystem path. Stored relative paths are checked against `DATA_DIR` before use.
 
 ## Tests
 
@@ -354,7 +377,7 @@ cd backend
 .\.venv\Scripts\python.exe -m pytest
 ```
 
-Coverage includes: config path/ratio/extension validation, clip weight/range/Ollama validation, filename sanitization and traversal protection, streamed write limits, ffprobe parsing and failure codes, health responses, upload rejection paths, job persistence across app restarts, legacy SQLite additive migrations, empty clip lists, worker queue claims, monotonic progress, interrupted-job recovery, transcript range clamping, non-speech filtering, atomic transcript round-trips, audio extraction, the no-speech and no-audio-stream paths, transcription failure handling, transcript endpoint responses, overlapping transcript windows with absolute timestamps, prompt rendering and placeholder errors, JSON-schema shape, whole-segment boundary snapping, too-short/out-of-bounds/reversed rejection, deterministic weighted scoring, IoU deduplication and count limits, malformed model output handling, Ollama unavailable/missing-model/timeout errors, crop geometry for wide/portrait/exact-9:16 sources, face-track association, speech-interval merging, single-face and multi-face speaker selection, mouth-motion cueing, stable low-confidence fallback, hold-then-centre behaviour, dead-zone and speed-limit smoothing, crop-plan interpolation, explicit centred fallback, missing-model errors, tracker orchestration with an injected detector, and clip metadata/file endpoints including tracking failure. Unit tests inject a stub transcriber, stub selector, and stub speaker tracker (or fake Ollama client), so they never download weights, load the face model, or call a real model.
+Coverage includes: config path/ratio/extension validation, clip weight/range/Ollama validation, filename sanitization and traversal protection, streamed write limits, ffprobe parsing and failure codes, health responses, upload rejection paths, job persistence across app restarts, legacy SQLite additive migrations, empty clip lists, worker queue claims, monotonic progress, interrupted-job recovery, transcript range clamping, non-speech filtering, atomic transcript round-trips, audio extraction, the no-speech and no-audio-stream paths, transcription failure handling, transcript endpoint responses, overlapping transcript windows with absolute timestamps, prompt rendering and placeholder errors, JSON-schema shape, whole-segment boundary snapping, too-short/out-of-bounds/reversed rejection, deterministic weighted scoring, IoU deduplication and count limits, malformed model output handling, Ollama unavailable/missing-model/timeout errors, crop geometry for wide/portrait/exact-9:16 sources, face-track association, speech-interval merging, single-face and multi-face speaker selection, mouth-motion cueing, stable low-confidence fallback, hold-then-centre behaviour, dead-zone and speed-limit smoothing, crop-plan interpolation, explicit centred fallback, missing-model errors, tracker orchestration with an injected detector, crop command generation and clamping, output verification for dimensions/codecs/audio/duration/frame rate, real FFmpeg renders with and without audio, a rendered dynamic crop that visibly follows the plan, per-clip render failure handling, and clip metadata/file endpoints. Unit tests inject a stub transcriber, stub selector, stub speaker tracker, and stub renderer (or fake Ollama client), so they never download weights, load the face model, call a real model, or render real video unless a test is explicitly marked as an FFmpeg integration test.
 
 Frontend verification:
 
@@ -390,11 +413,18 @@ npm.cmd run build
 - Phase 4 end-to-end: every stored crop plan used `coordinate_space=source_pixels`, `time_space=clip_relative_seconds`, a `405×720` crop (`720 × 9 / 16`), 41–50 samples, and source dimensions `1280×720`; tracking details recorded 1 track, 100% face frames, and 3–6 speech intervals per clip
 - Phase 4 end-to-end: crop movement stayed within the configured speed limit at the 2 fps sampling rate, with no rapid switching
 - Phase 4 timeout caveat: with the default `OLLAMA_TIMEOUT_SECONDS=180`, `qwen2.5:3b` on this CPU exceeded the limit during `selecting_clips` and the job failed with the actionable timeout message. Raising the timeout (and `OLLAMA_KEEP_ALIVE`) let the same job finish; the default stays at 180 s so slow machines get a clear error rather than an indefinite hang
+- Phase 5: all four clips from the Phase 4 66.7 s 1280×720 job were rendered from their stored crop plans to `1080×1920` H.264/AAC at 30 fps. Durations were `25.10`, `20.68`, `22.38`, and `20.37` s; files were 1.0–1.1 MB at CRF 23 / `veryfast`
+- Phase 5: ffprobe confirmed every output was MP4 with exactly one H.264 video stream and one AAC audio stream, no subtitles or data streams, and a duration matching the requested range
+- Phase 5: YuNet detected the speaker in rendered frames at relative positions x `0.45–0.53`, y `0.47–0.52`, confirming the time-varying crop kept the face well framed across all four clips
+- Phase 5: a synthetic red/blue source rendered with a left-to-right crop plan changed from red to blue over time, proving the dynamic `sendcmd` crop actually moves rather than staying static
+- Phase 5: temporary `render` command files were removed after each clip, and a simulated renderer failure marked the clip `failed`, cleared its output path, and returned `404 clip_not_rendered`
 - Corrupt `.mp4` → `422 unreadable_media`; `.txt` → `415 unsupported_file_type`; unknown job UUID → `404 job_not_found`; unknown clip UUID → `404 clip_not_found`
 
 ## Current limitations
 
-- No captions, music, branding, or 9:16 rendering yet; clips are proposals plus crop plans
+- Captions, music, text, and watermarks are intentionally not added; clips are plain portrait MP4s
+- Rendering is CPU-only (`libx264`) and re-encodes every clip; long or high-resolution sources take time
+- The dynamic crop updates at 25 Hz rather than per output frame; the plan is already smoothed, so this is not visible in normal footage
 - Active-speaker detection is heuristic (size, centrality, continuity, speech timing, mouth motion). It is not lip-sync or diarization, so it can follow the wrong face when speakers overlap, are similarly sized, or are off-centre
 - Tracking samples at `FACE_SAMPLE_FPS` (2 fps by default). Very fast movement between samples is smoothed and may lag slightly
 - Face detection depends on OpenCV and the YuNet model; without them every clip gets an explicit centred crop
