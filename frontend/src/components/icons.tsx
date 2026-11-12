@@ -208,6 +208,20 @@ export function CpuIcon(props: IconProps) {
   );
 }
 
+export function TrashIcon(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" {...props}>
+      <path
+        d="M4.75 6.75h14.5M9.25 6.75V4.5h5.5v2.25M6.5 6.75l.8 12.25a1.75 1.75 0 0 0 1.75 1.65h5.9a1.75 1.75 0 0 0 1.75-1.65l.8-12.25M10 10.5v6.25m4-6.25v6.25"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function DownloadIcon(props: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" {...props}>

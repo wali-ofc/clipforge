@@ -49,6 +49,12 @@ class Settings(BaseSettings):
     allowed_video_extensions: list[str] = Field(
         default_factory=lambda: ["mp4", "mov", "mkv"]
     )
+    # Refuse new uploads when the data drive has less free space than this.
+    min_free_disk_bytes: int = Field(default=1024**3, ge=0)
+
+    # Job deletion
+    # How long DELETE waits for an in-flight job to stop before removing files.
+    delete_cancel_wait_seconds: float = Field(default=5.0, ge=0)
 
     # External media tools
     ffmpeg_bin: str = "ffmpeg"

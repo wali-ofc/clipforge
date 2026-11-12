@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import {
@@ -11,9 +12,16 @@ import {
   DownloadIcon,
   FileVideoIcon,
   SpinnerIcon,
+  TrashIcon,
   XIcon,
 } from "@/components/icons";
-import { ApiError, getClipFileUrl, getJob, getJobClips } from "@/lib/api";
+import {
+  ApiError,
+  deleteJob,
+  getClipFileUrl,
+  getJob,
+  getJobClips,
+} from "@/lib/api";
 import {
   formatBytes,
   formatDate,
@@ -335,6 +343,7 @@ function ErrorState({
 }
 
 export function JobStatusView({ jobId }: { jobId: string }) {
+  const router = useRouter();
   const [job, setJob] = useState<Job | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
@@ -342,6 +351,8 @@ export function JobStatusView({ jobId }: { jobId: string }) {
   const [copied, setCopied] = useState(false);
   const [clips, setClips] = useState<Clip[]>([]);
   const [clipsError, setClipsError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!job || job.clip_count <= 0) {
@@ -443,6 +454,41 @@ export function JobStatusView({ jobId }: { jobId: string }) {
     }
   }
 
+  async function removeJob() {
+    if (!job || deleting) {
+      return;
+    }
+
+    const active = !isTerminalState(job.state);
+    const confirmed = window.confirm(
+      active
+        ? "Cancel this job and delete its upload, work files, and rendered clips? This cannot be undone."
+        : "Delete this job and all of its media? This cannot be undone.",
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteJob(job.id);
+      router.push("/");
+    } catch (requestError) {
+      // Already gone (for example, deleted from another tab) counts as success.
+      if (requestError instanceof ApiError && requestError.status === 404) {
+        router.push("/");
+        return;
+      }
+      setDeleteError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Could not delete this job.",
+      );
+      setDeleting(false);
+    }
+  }
+
   if (notFound) {
     return (
       <div className="space-y-6">
@@ -485,7 +531,7 @@ export function JobStatusView({ jobId }: { jobId: string }) {
           <span aria-hidden="true">←</span> Upload another video
         </Link>
         <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-600">
-          Phase 6 · results &amp; downloads
+          Phase 7 · hardening
         </span>
       </div>
 
@@ -513,17 +559,38 @@ export function JobStatusView({ jobId }: { jobId: string }) {
                   </p>
                 </div>
               </div>
-              <span
-                className={[
-                  "inline-flex shrink-0 items-center gap-1.5 self-start rounded-full border px-3 py-1.5 text-[11px] font-medium sm:self-auto",
-                  badgeClasses(job.state),
-                ].join(" ")}
-              >
-                {!isTerminalState(job.state) ? (
-                  <span className="status-dot h-1.5 w-1.5 rounded-full bg-current" />
-                ) : null}
-                {stateLabel(job.state)}
-              </span>
+              <div className="flex shrink-0 flex-wrap items-center gap-2 self-start sm:self-auto">
+                <span
+                  className={[
+                    "inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-medium",
+                    badgeClasses(job.state),
+                  ].join(" ")}
+                >
+                  {!isTerminalState(job.state) ? (
+                    <span className="status-dot h-1.5 w-1.5 rounded-full bg-current" />
+                  ) : null}
+                  {stateLabel(job.state)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => void removeJob()}
+                  disabled={deleting}
+                  className="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border border-red-400/20 bg-red-400/[0.05] px-3 py-1.5 text-[11px] font-medium text-red-200 transition hover:border-red-400/35 hover:bg-red-400/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-400/60 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {deleting ? (
+                    <SpinnerIcon className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <TrashIcon className="h-3.5 w-3.5" />
+                  )}
+                  {deleting
+                    ? isTerminalState(job.state)
+                      ? "Deleting…"
+                      : "Cancelling…"
+                    : isTerminalState(job.state)
+                      ? "Delete job & media"
+                      : "Cancel & delete job"}
+                </button>
+              </div>
             </div>
 
             <div className="px-5 py-5 sm:px-6">
@@ -574,7 +641,18 @@ export function JobStatusView({ jobId }: { jobId: string }) {
               {!isTerminalState(job.state) ? (
                 <p className="mt-3 text-[11px] text-zinc-600">
                   This page refreshes automatically. Jobs persist if you close
-                  the tab.
+                  the tab. Cancelling stops the worker and deletes the upload,
+                  work files, and any rendered clips.
+                </p>
+              ) : null}
+
+              {deleteError ? (
+                <p
+                  role="alert"
+                  className="mt-3 flex items-start gap-2 rounded-lg border border-red-400/20 bg-red-400/[0.05] px-3 py-2 text-[11px] leading-5 text-red-200"
+                >
+                  <AlertIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <span>{deleteError}</span>
                 </p>
               ) : null}
             </div>
@@ -606,6 +684,24 @@ export function JobStatusView({ jobId }: { jobId: string }) {
                   </h2>
                   <p className="mt-1 text-sm leading-6 text-red-200/80">
                     {job.error ?? "The pipeline reported an unknown error."}
+                  </p>
+                </div>
+              </div>
+            </section>
+          ) : null}
+
+          {job.state === "cancelled" ? (
+            <section className="rounded-2xl border border-white/10 bg-white/[0.02] px-5 py-4">
+              <div className="flex items-start gap-3">
+                <XIcon className="mt-0.5 h-4 w-4 shrink-0 text-zinc-400" />
+                <div>
+                  <h2 className="text-sm font-semibold text-zinc-200">
+                    Job cancelled
+                  </h2>
+                  <p className="mt-1 text-sm leading-6 text-zinc-400">
+                    Processing stopped before completion and temporary work
+                    files were cleaned up. Delete the job to remove its upload
+                    and any clips that were already rendered.
                   </p>
                 </div>
               </div>

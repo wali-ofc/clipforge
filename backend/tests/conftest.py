@@ -36,7 +36,14 @@ class StubTranscriber:
         self.has_speech = has_speech
         self.fail = fail
 
-    def transcribe(self, source_path, duration_seconds, work_dir, on_progress=None):
+    def transcribe(
+        self,
+        source_path,
+        duration_seconds,
+        work_dir,
+        on_progress=None,
+        cancel_check=None,
+    ):
         if on_progress:
             on_progress(0.1)
             on_progress(0.6)
@@ -241,6 +248,7 @@ class StubRenderer:
         has_audio: bool = True,
         source_width: int | None = None,
         source_height: int | None = None,
+        cancel_check=None,
     ) -> RenderResult:
         if self.fail:
             raise RenderingError(

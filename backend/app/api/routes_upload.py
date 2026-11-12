@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import errno
 import logging
 import os
+import shutil
 import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
@@ -41,6 +43,20 @@ async def create_job(
 ) -> Job:
     """Accept a streamed upload, validate it with ffprobe, and queue a job."""
     settings: Settings = request.app.state.settings
+
+    if settings.min_free_disk_bytes > 0:
+        try:
+            free_bytes = shutil.disk_usage(settings.data_dir).free
+        except OSError:
+            free_bytes = None
+        if free_bytes is not None and free_bytes < settings.min_free_disk_bytes:
+            raise api_error(
+                507,
+                "insufficient_disk_space",
+                "Not enough free disk space to accept an upload. At least "
+                f"{human_size(settings.min_free_disk_bytes)} must be free on "
+                f"the data drive; {human_size(free_bytes)} is available.",
+            )
 
     tools = getattr(request.app.state, "media_tools", None)
     if tools is None or not media_tools_available(tools):
@@ -135,6 +151,22 @@ async def create_job(
     except HTTPException:
         session.rollback()
         raise
+    except OSError as exc:
+        session.rollback()
+        if exc.errno == errno.ENOSPC:
+            logger.error("Upload for job %s ran out of disk space", job_id)
+            raise api_error(
+                507,
+                "insufficient_disk_space",
+                "The data drive ran out of space while saving the upload. "
+                "Free some space and try again.",
+            ) from exc
+        logger.exception("Unexpected upload I/O failure for job %s", job_id)
+        raise api_error(
+            500,
+            "upload_failed",
+            "The upload could not be saved. Check the backend logs and try again.",
+        ) from exc
     except Exception as exc:  # noqa: BLE001 - convert unexpected failures to API errors
         session.rollback()
         logger.exception("Unexpected upload failure for job %s", job_id)

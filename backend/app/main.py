@@ -8,6 +8,7 @@ from typing import AsyncIterator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.api import routes_clips, routes_health, routes_jobs, routes_upload
 from app.config import Settings, get_settings
@@ -16,6 +17,7 @@ from app.db import (
     create_session_factory,
     init_db,
 )
+from app.services.cleanup import cleanup_orphan_job_dirs
 from app.services.clip_selection import ClipSelector
 from app.services.rendering import ClipRenderer
 from app.services.speaker_tracking import SpeakerTracker
@@ -27,6 +29,7 @@ from app.services.tooling import (
     media_tools_available,
 )
 from app.services.transcription import Transcriber
+from app.utils.files import human_size
 from app.utils.paths import ensure_data_dirs
 from app.worker.runner import JobWorker, recover_interrupted_jobs
 
@@ -99,6 +102,7 @@ def create_app(
             )
 
         recover_interrupted_jobs(session_factory)
+        cleanup_orphan_job_dirs(resolved_settings, session_factory)
 
         worker = JobWorker(
             resolved_settings,
@@ -132,6 +136,33 @@ def create_app(
         ],
     )
     app.state.settings = resolved_settings
+
+    @app.middleware("http")
+    async def reject_oversized_upload(request, call_next):
+        """Reject clearly oversized multipart bodies before they are spooled."""
+        if request.method == "POST" and request.url.path == "/api/jobs":
+            raw_length = request.headers.get("content-length")
+            if raw_length:
+                try:
+                    content_length = int(raw_length)
+                except ValueError:
+                    content_length = 0
+                # Allow a small multipart overhead margin on top of the file
+                # limit so a file at the limit is not rejected by boundaries.
+                if content_length > resolved_settings.max_upload_bytes + 1024 * 1024:
+                    return JSONResponse(
+                        status_code=413,
+                        content={
+                            "detail": {
+                                "code": "file_too_large",
+                                "message": (
+                                    "The upload exceeds the maximum size of "
+                                    f"{human_size(resolved_settings.max_upload_bytes)}."
+                                ),
+                            }
+                        },
+                    )
+        return await call_next(request)
 
     app.add_middleware(
         CORSMiddleware,

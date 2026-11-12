@@ -21,7 +21,13 @@ from typing import Any, Callable, Iterable, Protocol
 
 from app.config import Settings
 from app.schemas.transcript import Transcript, TranscriptSegment, TranscriptWord
-from app.utils.subprocesses import CommandError, CommandNotFoundError, run_command
+from app.utils.cancellation import JobCancelled
+from app.utils.subprocesses import (
+    CommandCancelled,
+    CommandError,
+    CommandNotFoundError,
+    run_command,
+)
 from app.utils.time import utc_now
 
 logger = logging.getLogger(__name__)
@@ -55,6 +61,7 @@ class Transcriber(Protocol):
         duration_seconds: float,
         work_dir: Path,
         on_progress: ProgressCallback | None = None,
+        cancel_check: Callable[[], bool] | None = None,
     ) -> Transcript:
         """Return a timestamped transcript for the source video."""
 
@@ -199,6 +206,7 @@ def extract_audio(
     destination: Path,
     settings: Settings,
     duration_seconds: float,
+    cancel_check: Callable[[], bool] | None = None,
 ) -> None:
     """Extract a 16 kHz mono PCM WAV suitable for Whisper."""
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -226,7 +234,9 @@ def extract_audio(
     )
 
     try:
-        run_command(args, timeout=timeout)
+        run_command(args, timeout=timeout, cancel_check=cancel_check)
+    except CommandCancelled as exc:
+        raise JobCancelled() from exc
     except CommandNotFoundError as exc:
         raise TranscriptionError(
             "ffmpeg_missing",
@@ -343,13 +353,22 @@ class FasterWhisperTranscriber:
         duration_seconds: float,
         work_dir: Path,
         on_progress: ProgressCallback | None = None,
+        cancel_check: Callable[[], bool] | None = None,
     ) -> Transcript:
         work_dir.mkdir(parents=True, exist_ok=True)
         audio_path = work_dir / "audio.wav"
 
         try:
             _report(on_progress, 0.01)
-            extract_audio(source_path, audio_path, self.settings, duration_seconds)
+            extract_audio(
+                source_path,
+                audio_path,
+                self.settings,
+                duration_seconds,
+                cancel_check=cancel_check,
+            )
+            if cancel_check is not None and cancel_check():
+                raise JobCancelled()
             _report(on_progress, 0.04)
 
             model = _load_whisper_model(self.settings, self._model_factory)
@@ -368,6 +387,8 @@ class FasterWhisperTranscriber:
 
                 raw_segments: list[Any] = []
                 for segment in segment_iter:
+                    if cancel_check is not None and cancel_check():
+                        raise JobCancelled()
                     raw_segments.append(segment)
                     end = _finite_float(getattr(segment, "end", None)) or 0.0
                     if duration_seconds > 0:
@@ -375,7 +396,7 @@ class FasterWhisperTranscriber:
                             on_progress,
                             min(0.97, max(0.05, end / duration_seconds)),
                         )
-            except TranscriptionError:
+            except (TranscriptionError, JobCancelled):
                 raise
             except Exception as exc:  # noqa: BLE001 - keep worker alive
                 logger.exception("Whisper failed for %s", source_path.name)

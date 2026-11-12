@@ -240,7 +240,7 @@ def test_renderer_removes_partial_output_on_ffmpeg_failure(
     source_path.write_bytes(b"not a real video")
     output_path = tmp_path / "partial.mp4"
 
-    def fake_run(args, *, timeout, cwd=None):
+    def fake_run(args, *, timeout, cwd=None, cancel_check=None):
         output_path.write_bytes(b"partial output")
         raise CommandError(args, 1, "simulated ffmpeg failure")
 

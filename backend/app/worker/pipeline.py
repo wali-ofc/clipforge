@@ -42,6 +42,7 @@ from app.services.transcription import (
     save_transcript,
     unload_whisper_models,
 )
+from app.utils.cancellation import CancelToken, JobCancelled
 from app.utils.paths import (
     job_clips_dir,
     job_work_dir,
@@ -89,6 +90,22 @@ def claim_next_queued_job(session: Session) -> Job | None:
     return job
 
 
+def _raise_if_cancelled(token: CancelToken | None) -> None:
+    if token is not None and token.cancelled:
+        raise JobCancelled()
+
+
+def _check_cancelled(session: Session, job: Job, token: CancelToken | None) -> None:
+    """Cancel at a stage boundary, including out-of-band database updates."""
+    _raise_if_cancelled(token)
+    try:
+        session.refresh(job)
+    except Exception as exc:  # noqa: BLE001 - the row may already be deleted
+        raise JobCancelled() from exc
+    if job.state == JobState.cancelled.value:
+        raise JobCancelled()
+
+
 def process_job(
     session: Session,
     job: Job,
@@ -97,13 +114,17 @@ def process_job(
     selector: ClipSelector | None = None,
     speaker_tracker: SpeakerTracker | None = None,
     renderer: ClipRenderer | None = None,
+    *,
+    cancel_token: CancelToken | None = None,
 ) -> None:
     """Run inspection, transcription, selection, crop planning, and rendering for a job."""
     job_id = job.id
 
     try:
+        _check_cancelled(session, job, cancel_token)
         source_path = resolve_stored_path(settings, job.stored_path)
         info = probe_media(source_path, settings)
+        _check_cancelled(session, job, cancel_token)
 
         job.duration_seconds = info.duration_seconds
         job.width = info.width
@@ -137,6 +158,7 @@ def process_job(
                 source_path,
                 info.duration_seconds,
                 work_dir,
+                cancel_token,
             )
         else:
             transcript = build_transcript(
@@ -145,6 +167,7 @@ def process_job(
                 model=settings.whisper_model,
             )
 
+        _check_cancelled(session, job, cancel_token)
         apply_progress(job, 82, "Saving transcript", JobState.transcribing)
         session.commit()
 
@@ -171,7 +194,9 @@ def process_job(
                 transcript,
                 info.duration_seconds,
                 selector,
+                cancel_token,
             )
+            _check_cancelled(session, job, cancel_token)
             _replace_clips(session, job, candidates)
             job.clip_selection_model = model_name
             session.commit()
@@ -184,6 +209,7 @@ def process_job(
                     transcript,
                     source_path,
                     speaker_tracker,
+                    cancel_token,
                 )
                 rendered_count = _render_clips_with_progress(
                     session,
@@ -194,6 +220,7 @@ def process_job(
                     has_audio=info.has_audio,
                     source_width=info.width,
                     source_height=info.height,
+                    cancel_token=cancel_token,
                 )
                 _cleanup_temp_files(settings, job.id)
 
@@ -218,6 +245,7 @@ def process_job(
                 "no clips were selected."
             )
 
+        _check_cancelled(session, job, cancel_token)
         apply_progress(job, 100, message, JobState.completed)
         job.completed_at = utc_now()
         session.commit()
@@ -229,6 +257,10 @@ def process_job(
             transcript.has_speech,
             job.clip_count,
         )
+    except JobCancelled:
+        _cleanup_temp_files(settings, job_id)
+        _mark_cancelled(session, job_id)
+        logger.info("Job %s cancelled", job_id)
     except MediaProbeError as exc:
         _mark_failed(session, job_id, exc.message, stage="Inspection failed")
         logger.warning("Job %s failed inspection: %s", job_id, exc.message)
@@ -255,6 +287,7 @@ def _transcribe_with_progress(
     source_path: Path,
     duration_seconds: float,
     work_dir: Path,
+    cancel_token: CancelToken | None = None,
 ) -> Transcript:
     """Run transcription, persisting throttled, monotonic progress updates."""
     last_commit = 0.0
@@ -263,6 +296,7 @@ def _transcribe_with_progress(
     def on_progress(fraction: float) -> None:
         nonlocal last_commit, last_progress
 
+        _raise_if_cancelled(cancel_token)
         bounded = max(0.0, min(1.0, float(fraction)))
         progress = 20 + int(round(60 * bounded))
         if progress <= last_progress:
@@ -287,6 +321,7 @@ def _transcribe_with_progress(
         duration_seconds,
         work_dir,
         on_progress=on_progress,
+        cancel_check=cancel_token.should_cancel if cancel_token else None,
     )
 
 
@@ -297,6 +332,7 @@ def _select_clips_with_progress(
     transcript: Transcript,
     duration_seconds: float,
     selector: ClipSelector | None,
+    cancel_token: CancelToken | None = None,
 ) -> tuple[list[ClipCandidate], str | None]:
     """Run selection with monotonic progress in the 84-97 range."""
     active_selector = selector or OllamaClipSelector(settings)
@@ -311,6 +347,7 @@ def _select_clips_with_progress(
     session.commit()
 
     def on_progress(fraction: float) -> None:
+        _raise_if_cancelled(cancel_token)
         bounded = max(0.0, min(1.0, float(fraction)))
         progress = 84 + int(round(13 * bounded))
         if progress <= job.progress:
@@ -338,6 +375,7 @@ def _track_clips_with_progress(
     transcript: Transcript,
     source_path: Path,
     tracker: SpeakerTracker | None,
+    cancel_token: CancelToken | None = None,
 ) -> None:
     """Plan a speaker-aware crop for every candidate clip.
 
@@ -369,6 +407,7 @@ def _track_clips_with_progress(
     tracking_root = job_work_dir(settings, job.id) / "tracking"
     total = len(clips)
     for index, clip in enumerate(clips):
+        _check_cancelled(session, job, cancel_token)
         clip_work_dir = tracking_root / clip.id
         try:
             result = active_tracker.track(
@@ -384,6 +423,8 @@ def _track_clips_with_progress(
             clip.speaker_tracking_confidence = result.confidence
             clip.crop_plan = result.crop_plan
             clip.tracking_details = result.details
+        except JobCancelled:
+            raise
         except Exception as exc:  # noqa: BLE001 - fallback per clip
             logger.exception(
                 "Speaker tracking failed for clip %s", clip.id
@@ -424,6 +465,7 @@ def _render_clips_with_progress(
     has_audio: bool = True,
     source_width: int | None = None,
     source_height: int | None = None,
+    cancel_token: CancelToken | None = None,
 ) -> int:
     """Render 9:16 portrait MP4s for all candidate clips with monotonic progress."""
     active_renderer = renderer or FFmpegClipRenderer(settings)
@@ -453,6 +495,7 @@ def _render_clips_with_progress(
     clips_dir = job_clips_dir(settings, job.id)
 
     for index, clip in enumerate(clips):
+        _check_cancelled(session, job, cancel_token)
         clip.render_status = "rendering"
         session.commit()
 
@@ -467,6 +510,7 @@ def _render_clips_with_progress(
                 has_audio=has_audio,
                 source_width=source_width,
                 source_height=source_height,
+                cancel_check=cancel_token.should_cancel if cancel_token else None,
             )
             clip.output_filename = relative_to_data_dir(settings, result.output_path)
             clip.width = result.width
@@ -474,6 +518,8 @@ def _render_clips_with_progress(
             clip.render_status = "completed"
             clip.error = None
             rendered_count += 1
+        except JobCancelled:
+            raise
         except Exception as exc:  # noqa: BLE001 - individual clip failures don't crash pipeline
             logger.exception("Rendering failed for clip %s", clip.id)
             output_path.unlink(missing_ok=True)
@@ -536,10 +582,24 @@ def _replace_clips(
     session.flush()
 
 
-def _mark_failed(session: Session, job_id: str, message: str, *, stage: str) -> None:
+def _mark_cancelled(session: Session, job_id: str) -> None:
+    """Record a cooperative cancellation without overwriting a deleted row."""
     session.rollback()
     current = session.get(Job, job_id)
     if current is None:
+        return
+    current.state = JobState.cancelled.value
+    current.error = None
+    current.stage_message = "Cancelled by user"
+    current.completed_at = utc_now()
+    current.updated_at = utc_now()
+    session.commit()
+
+
+def _mark_failed(session: Session, job_id: str, message: str, *, stage: str) -> None:
+    session.rollback()
+    current = session.get(Job, job_id)
+    if current is None or current.state == JobState.cancelled.value:
         return
     current.state = JobState.failed.value
     current.error = message

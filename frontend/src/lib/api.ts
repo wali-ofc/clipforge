@@ -163,6 +163,33 @@ export async function getJobClips(
   return body as Clip[];
 }
 
+/**
+ * Cancel a queued or active job and delete its record, upload, work files, and
+ * rendered clips. Terminal jobs are deleted immediately.
+ */
+export async function deleteJob(jobId: string): Promise<void> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${API_BASE_URL}/api/jobs/${encodeURIComponent(jobId)}`,
+      { method: "DELETE" },
+    );
+  } catch {
+    throw networkError();
+  }
+
+  if (response.ok) {
+    return;
+  }
+
+  const body = await readJson(response);
+  throw errorFromResponse(
+    response.status,
+    body,
+    `Could not delete job ${jobId}.`,
+  );
+}
+
 export function uploadVideo(
   file: File,
   onProgress?: (percent: number) => void,

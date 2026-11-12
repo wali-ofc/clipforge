@@ -28,7 +28,7 @@ import logging
 import math
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 
 from app.config import Settings
 from app.models.clip import Clip
@@ -38,7 +38,13 @@ from app.services.speaker_tracking import (
     compute_crop_geometry,
     interpolate_crop,
 )
-from app.utils.subprocesses import CommandError, CommandNotFoundError, run_command
+from app.utils.cancellation import JobCancelled
+from app.utils.subprocesses import (
+    CommandCancelled,
+    CommandError,
+    CommandNotFoundError,
+    run_command,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +95,7 @@ class ClipRenderer(Protocol):
         has_audio: bool = True,
         source_width: int | None = None,
         source_height: int | None = None,
+        cancel_check: Callable[[], bool] | None = None,
     ) -> RenderResult:
         """Render a single candidate clip to portrait MP4 format."""
 
@@ -272,6 +279,7 @@ class FFmpegClipRenderer:
         has_audio: bool = True,
         source_width: int | None = None,
         source_height: int | None = None,
+        cancel_check: Callable[[], bool] | None = None,
     ) -> RenderResult:
         if not source_path.is_file():
             raise RenderingError(
@@ -383,7 +391,13 @@ class FFmpegClipRenderer:
             args.append(str(output_path))
 
             try:
-                run_command(args, timeout=settings.render_timeout_seconds)
+                run_command(
+                    args,
+                    timeout=settings.render_timeout_seconds,
+                    cancel_check=cancel_check,
+                )
+            except CommandCancelled as exc:
+                raise JobCancelled() from exc
             except CommandNotFoundError as exc:
                 raise RenderingError(
                     "media_tools_unavailable",

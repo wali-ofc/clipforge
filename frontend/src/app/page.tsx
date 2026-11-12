@@ -45,7 +45,7 @@ export default function HomePage() {
           <div className="reveal lg:pt-7">
             <div className="inline-flex items-center gap-2 rounded-full border border-forge-500/20 bg-forge-500/[0.06] px-3 py-1.5 text-[11px] font-medium text-forge-200">
               <span className="status-dot h-1.5 w-1.5 rounded-full bg-forge-400" />
-              Phase 6 · results &amp; downloads
+              Phase 7 · hardening
             </div>
 
             <h1 className="mt-6 text-balance text-[2.7rem] font-semibold leading-[1.02] tracking-[-0.045em] text-zinc-50 sm:text-6xl">

@@ -2,8 +2,8 @@
 
 Local-first AI video clipping. Long recordings go in; short vertical clips come out — processed entirely on your machine, with no cloud services and no accounts.
 
-> **Build status: Phase 0 + Phase 1 + Phase 2 + Phase 3 + Phase 4 + Phase 5 + Phase 6 complete.**
-> Uploads are streamed to disk, validated with `ffprobe`, persisted in SQLite, and processed by a single background worker. The worker extracts audio with FFmpeg, transcribes it locally with faster-whisper, asks a local Ollama model for self-contained candidate moments, samples frames only inside each selected candidate to build face tracks and a smoothed 9:16 crop plan, then renders every selected clip as a verified H.264/AAC MP4 with a time-varying portrait crop. The results page previews each clip in the browser and downloads the MP4 through the API. Captions and music are still **not implemented**, by design.
+> **Build status: Phase 0 + Phase 1 + Phase 2 + Phase 3 + Phase 4 + Phase 5 + Phase 6 + Phase 7 complete.**
+> Uploads are streamed to disk, validated with `ffprobe`, persisted in SQLite, and processed by a single background worker. The worker extracts audio with FFmpeg, transcribes it locally with faster-whisper, asks a local Ollama model for self-contained candidate moments, samples frames only inside each selected candidate to build face tracks and a smoothed 9:16 crop plan, then renders every selected clip as a verified H.264/AAC MP4 with a time-varying portrait crop. The results page previews each clip in the browser, downloads the MP4 through the API, and can cancel or delete a job together with its media. Phase 7 hardens the pipeline with cooperative cancellation, interrupted-job recovery, orphan-directory cleanup, disk-space guards, and path-traversal protection. Captions and music are still **not implemented**, by design.
 
 ## What works today
 
@@ -27,6 +27,10 @@ Local-first AI video clipping. Long recordings go in; short vertical clips come 
 - Configurable output resolution (`1080×1920` default, `720×1280` supported), frame rate, CRF, preset, and render timeout
 - Minimal Next.js UI: drag/drop upload, upload progress, live job status polling, transcript summary, results cards with inline video previews, download buttons, tracking/fallback and render status, error states
 - Metadata, transcript, clip proposals, crop plans, and rendered MP4 files exposed over the API; clips stream inline for preview or download as attachments with safe filenames
+- Cooperative job cancellation: deleting a queued or active job stops the worker at the next stage boundary, kills an in-flight FFmpeg process, cleans temporary files, and removes the job record plus all of its media
+- Startup recovery: jobs left active by a crash are marked failed, and UUID job directories with no database row are removed as orphans
+- Upload hardening: free-disk preflight (`507 insufficient_disk_space`), early oversized-body rejection (`413 file_too_large`), sanitized display filenames, UUID-only storage paths, and stored-path containment checks before any file is read
+- Clear, actionable errors for missing media tools, unreadable files, exhausted disk space, and deleted jobs
 
 Captions are intentionally **not** generated or burned into any video. The transcript is internal pipeline data. No music, text, or watermark is added during rendering.
 
@@ -40,13 +44,13 @@ clipforge/
 │   │   ├── models/       # SQLAlchemy Job and Clip models
 │   │   ├── prompts/      # editable clip-selection prompt
 │   │   ├── schemas/      # Pydantic response, transcript, and LLM models
-│   │   ├── services/     # probing, tool checks, transcription, Ollama, selection, tracking, rendering
-│   │   ├── utils/        # config-independent helpers (files, paths, subprocess)
+│   │   ├── services/     # probing, tool checks, transcription, Ollama, selection, tracking, rendering, cleanup
+│   │   ├── utils/        # config-independent helpers (cancellation, files, paths, subprocess)
 │   │   ├── worker/       # queue runner and inspection/transcription/selection/tracking/render pipeline
 │   │   ├── config.py     # typed settings
 │   │   ├── db.py         # engine, sessions, schema creation + additive migrations
 │   │   └── main.py       # FastAPI app + lifespan
-│   ├── tests/            # 139 pytest tests
+│   ├── tests/            # 151 pytest tests
 │   ├── data/             # runtime only, gitignored
 │   ├── requirements.lock.txt
 │   ├── pyproject.toml
@@ -172,6 +176,8 @@ Relative paths resolve against `backend/`, not the current shell directory.
 | `DATABASE_URL` | `sqlite:///./data/clipforge.db` | SQLAlchemy URL |
 | `MAX_UPLOAD_BYTES` | `5368709120` (5 GiB) | Hard upload limit |
 | `UPLOAD_CHUNK_BYTES` | `1048576` | Streaming copy chunk size |
+| `MIN_FREE_DISK_BYTES` | `1073741824` (1 GiB) | Refuse new uploads below this free space on the data drive; `0` disables the guard |
+| `DELETE_CANCEL_WAIT_SECONDS` | `5` | How long `DELETE /api/jobs/{id}` waits for an active job to stop before removing files |
 | `ALLOWED_VIDEO_EXTENSIONS` | `["mp4","mov","mkv"]` | Accepted containers |
 | `CORS_ORIGINS` | localhost / 127.0.0.1:3000 | Browser origins |
 | `FFMPEG_BIN` / `FFPROBE_BIN` | `ffmpeg` / `ffprobe` | Executable names or absolute paths |
@@ -237,6 +243,7 @@ The selection prompt itself is editable at `backend/app/prompts/clip_selection.t
 | `GET` | `/api/jobs/{id}/clips` | Stored candidate clips for a job |
 | `GET` | `/api/clips/{id}` | One clip's metadata, heuristic score, tracking status, and crop plan |
 | `GET` | `/api/clips/{id}/file` | Rendered portrait MP4; streams inline for preview, or `?download=true` for an attachment with a safe filename. `404 clip_not_rendered` until rendering succeeds |
+| `DELETE` | `/api/jobs/{id}` | Cancel a queued/active job, then delete the job row, clip rows, upload, work files, and rendered clips. Returns `204`; repeat or unknown IDs return `404 job_not_found` |
 
 Errors use a consistent shape:
 
@@ -244,13 +251,13 @@ Errors use a consistent shape:
 { "detail": { "code": "unsupported_file_type", "message": "Unsupported file type. Upload one of: .mp4, .mov, .mkv." } }
 ```
 
-Status codes: `400 empty_file`, `404 job_not_found`, `404 transcript_not_found`, `404 clip_not_found`, `404 clip_not_rendered`, `413 file_too_large`, `415 unsupported_file_type`, `422` (`unreadable_media`, `no_video_stream`, `unsupported_video_codec`, `invalid_dimensions`, `duration_unknown`), `503 media_tools_unavailable`.
+Status codes: `400 empty_file`, `404 job_not_found`, `404 transcript_not_found`, `404 clip_not_found`, `404 clip_not_rendered`, `413 file_too_large`, `415 unsupported_file_type`, `422` (`unreadable_media`, `no_video_stream`, `unsupported_video_codec`, `invalid_dimensions`, `duration_unknown`), `503 media_tools_unavailable`, `507 insufficient_disk_space`.
 
 ### Job states and progress
 
-`queued → inspecting → transcribing → selecting_clips → tracking_speakers → rendering → completed | failed`
+`queued → inspecting → transcribing → selecting_clips → tracking_speakers → rendering → completed | failed | cancelled`
 
-Progress is monotonic: `5` on inspection, `15` when audio preparation starts, `20–80` during transcription, `82` while the transcript is saved, `84–97` during clip selection, `97–98` during speaker tracking and crop planning, `98–99` while clips render, and `100` on completion. A job with silent audio or no audio stream still completes with an empty transcript and `has_speech=false`; selection, tracking, and rendering are skipped. `cancelled` exists in the enum so later phases and clients do not need a schema change.
+Progress is monotonic: `5` on inspection, `15` when audio preparation starts, `20–80` during transcription, `82` while the transcript is saved, `84–97` during clip selection, `97–98` during speaker tracking and crop planning, `98–99` while clips render, and `100` on completion. A job with silent audio or no audio stream still completes with an empty transcript and `has_speech=false`; selection, tracking, and rendering are skipped. `cancelled` is terminal: a cancelled job is never claimed again by the worker.
 
 Clip selection failures are explicit: if Ollama is unreachable or the configured model is missing, the job fails with a message naming the fix. If the model returns malformed output for one window, that window is skipped and the rest continue. If every window is malformed or no proposal fits the limits, the job completes with zero clips and a clear stage message rather than crashing the worker.
 
@@ -367,6 +374,21 @@ The job page is the results page. While a job runs it polls `/api/jobs/{id}` eve
 
 `FileResponse` supports HTTP range requests, so the preview can seek without downloading the whole file. `?download=true` switches `Content-Disposition` to `attachment` and uses a sanitized filename derived from the clip title. The browser never receives a filesystem path: the stored relative path is resolved and checked against `DATA_DIR` on the server.
 
+## Cancellation and deletion
+
+There is one destructive action per job: **Cancel & delete job** while it is queued or processing, and **Delete job & media** once it is terminal. Both call `DELETE /api/jobs/{id}`. The UI asks for confirmation, disables the action while the request is in flight, and returns to the upload page on success.
+
+Cancellation is cooperative rather than a thread kill:
+
+1. `DELETE` marks a queued or active job `cancelled` and asks the worker to stop it.
+2. The worker polls a per-job `CancelToken` at stage boundaries, in transcription progress callbacks, between clips during tracking and rendering, and inside subprocess waits. An in-flight FFmpeg process is killed instead of waiting for its timeout.
+3. The pipeline raises `JobCancelled`, removes temporary work files, and records the terminal `cancelled` state without overwriting a row that is already being deleted.
+4. `DELETE` waits up to `DELETE_CANCEL_WAIT_SECONDS` for the worker to stop touching the job's files, then deletes the job row, its clip rows, and the `uploads/`, `work/`, and `clips/` directories for that UUID.
+
+If the job is already terminal, no cancellation is needed: the record and directories are removed immediately. A second delete, or an unknown ID, returns `404 job_not_found`. If the worker does not unwind within the wait window, the response still deletes the database row and files; the worker's later writes fail against missing paths and are ignored.
+
+On startup, jobs left in an active state by a crashed process are marked `failed`. Any UUID-named directory under `uploads/`, `work/`, or `clips/` that has no matching database row is treated as an orphan and removed. Non-UUID entries, such as the `models` directory, are never touched. This recovers disk space after a crash between deleting a row and deleting its files.
+
 ## Storage
 
 ```
@@ -384,6 +406,23 @@ Clip rows store start/end/duration, title, hook, reason, score, component scores
 
 During transcription, FFmpeg writes `work/<job-uuid>/audio.wav` (16 kHz mono PCM). It is deleted after transcription; only `transcript.json` remains. Tracking and render temporary directories are removed when the job finishes, and only verified clip MP4s remain under `clips/`. Paths are derived from the job UUID only. The original filename is stored as display metadata and sanitized; it is never used to build a filesystem path. Stored relative paths are checked against `DATA_DIR` before use.
 
+### Disk space and cleanup
+
+Budget roughly **3× the source size** while a job is active: the uploaded original, extracted audio, sampled tracking frames, render command files, and the encoded clip outputs can coexist briefly. Transcription models are additional one-time downloads (hundreds of MB for `small`; check `backend/data/models`). Rendering writes one MP4 per selected clip, typically much smaller than the source.
+
+- Uploads are refused with `507 insufficient_disk_space` when the data drive has less than `MIN_FREE_DISK_BYTES` free, and an `ENOSPC` during streaming maps to the same error.
+- Declared request bodies above `MAX_UPLOAD_BYTES` plus multipart overhead are rejected with `413 file_too_large` before they are spooled.
+- Temporary audio, frames, and render command files are deleted as stages finish and again when a job is cancelled or fails.
+- Deleting a job removes its upload, work directory, and rendered clips. There is no automatic retention policy, so delete finished jobs you no longer need.
+- Orphan UUID directories are removed at startup, and `backend/data/` is gitignored so media is never committed.
+
+## Security notes
+
+- Uploaded files are stored only under `uploads/<job-uuid>/source.mp4`; the client-supplied filename is display metadata and is sanitized, never used as a path.
+- Job and clip IDs must be canonical UUIDs before any directory is touched. Deletion refuses non-UUID names and paths that resolve outside the managed base directory.
+- Stored transcript and clip paths are resolved and checked against `DATA_DIR` before reads or downloads. A tampered row cannot be used to read arbitrary files.
+- The API binds to `127.0.0.1` by default and has no authentication. Do not expose it to an untrusted network.
+
 ## Tests
 
 ```powershell
@@ -391,7 +430,7 @@ cd backend
 .\.venv\Scripts\python.exe -m pytest
 ```
 
-Coverage includes: config path/ratio/extension validation, clip weight/range/Ollama validation, filename sanitization and traversal protection, streamed write limits, ffprobe parsing and failure codes, health responses, upload rejection paths, job persistence across app restarts, legacy SQLite additive migrations, empty clip lists, worker queue claims, monotonic progress, interrupted-job recovery, transcript range clamping, non-speech filtering, atomic transcript round-trips, audio extraction, the no-speech and no-audio-stream paths, transcription failure handling, transcript endpoint responses, overlapping transcript windows with absolute timestamps, prompt rendering and placeholder errors, JSON-schema shape, whole-segment boundary snapping, too-short/out-of-bounds/reversed rejection, deterministic weighted scoring, IoU deduplication and count limits, malformed model output handling, Ollama unavailable/missing-model/timeout errors, crop geometry for wide/portrait/exact-9:16 sources, face-track association, speech-interval merging, single-face and multi-face speaker selection, mouth-motion cueing, stable low-confidence fallback, hold-then-centre behaviour, dead-zone and speed-limit smoothing, crop-plan interpolation, explicit centred fallback, missing-model errors, tracker orchestration with an injected detector, crop command generation and clamping, output verification for dimensions/codecs/audio/duration/frame rate, real FFmpeg renders with and without audio, a rendered dynamic crop that visibly follows the plan, per-clip render failure handling, clip metadata/file endpoints, inline vs attachment download headers, safe download filenames, and the rule that a clip file is served only after `render_status=completed`. Unit tests inject a stub transcriber, stub selector, stub speaker tracker, and stub renderer (or fake Ollama client), so they never download weights, load the face model, call a real model, or render real video unless a test is explicitly marked as an FFmpeg integration test.
+Coverage includes: config path/ratio/extension validation, clip weight/range/Ollama validation, filename sanitization and traversal protection, streamed write limits, ffprobe parsing and failure codes, health responses, upload rejection paths, job persistence across app restarts, legacy SQLite additive migrations, empty clip lists, worker queue claims, monotonic progress, interrupted-job recovery, transcript range clamping, non-speech filtering, atomic transcript round-trips, audio extraction, the no-speech and no-audio-stream paths, transcription failure handling, transcript endpoint responses, overlapping transcript windows with absolute timestamps, prompt rendering and placeholder errors, JSON-schema shape, whole-segment boundary snapping, too-short/out-of-bounds/reversed rejection, deterministic weighted scoring, IoU deduplication and count limits, malformed model output handling, Ollama unavailable/missing-model/timeout errors, crop geometry for wide/portrait/exact-9:16 sources, face-track association, speech-interval merging, single-face and multi-face speaker selection, mouth-motion cueing, stable low-confidence fallback, hold-then-centre behaviour, dead-zone and speed-limit smoothing, crop-plan interpolation, explicit centred fallback, missing-model errors, tracker orchestration with an injected detector, crop command generation and clamping, output verification for dimensions/codecs/audio/duration/frame rate, real FFmpeg renders with and without audio, a rendered dynamic crop that visibly follows the plan, per-clip render failure handling, clip metadata/file endpoints, inline vs attachment download headers, safe download filenames, and the rule that a clip file is served only after `render_status=completed`. Phase 7 adds 12 hardening tests: deleting a completed job removes its record, clips, and media; deleting a queued job removes the upload without starting the worker; deleting an active job cancels the worker and unwinds before files are removed; pre-cancelled jobs record a terminal `cancelled` state and are not reclaimed; repeated and unknown deletes return `404`; orphan cleanup removes only unknown UUID directories; deletion refuses non-UUID IDs; the free-disk guard returns `507`; unsafe stored transcript and clip paths are rejected; and a cancellable subprocess stops promptly. Unit tests inject a stub transcriber, stub selector, stub speaker tracker, and stub renderer (or fake Ollama client), so they never download weights, load the face model, call a real model, or render real video unless a test is explicitly marked as an FFmpeg integration test.
 
 Frontend verification:
 
@@ -438,6 +477,9 @@ npm.cmd run build
 - Phase 6: temporarily marking one clip `speaker_tracking_status=fallback` made its card show the "Stable fallback face" badge, `32% speaker confidence`, and the amber note "Speaker tracking used a stable fallback face, not active-speaker detection."; restoring `tracked` removed the note
 - Phase 6: at `1440 px` and `390 px` the results page had no horizontal overflow, the 9:16 previews stayed inside their cards, and every card text node measured at least `7.2:1` contrast against its composited background
 - Phase 6: a clip forced back to `render_status=pending` returned `404 clip_not_rendered`, so a stored path alone never exposes a file
+- Phase 7: the browser's **Delete job & media** action showed the expected confirmation, called `DELETE /api/jobs/{id}`, returned home, and the job then answered `404 job_not_found`; its `uploads/`, `work/`, and `clips/` directories were gone
+- Phase 7: `DELETE /api/jobs/{id}` on a job mid-`transcribing` (21%) returned `204` after the 5 s cancel wait, the worker logged the cancellation, and the job plus all three directories were removed; the backend stayed healthy
+- Phase 7: after a forced backend stop, orphan UUID directories under `uploads/`, `work/`, and `clips/` were removed at startup while a non-UUID directory was left untouched
 - Corrupt `.mp4` → `422 unreadable_media`; `.txt` → `415 unsupported_file_type`; unknown job UUID → `404 job_not_found`; unknown clip UUID → `404 clip_not_found`
 
 ## Current limitations
@@ -453,8 +495,8 @@ npm.cmd run build
 - The default `qwen2.5:3b` model must be pulled before selection works; the health check reports it as unavailable until then
 - The first transcription of a model requires internet access and enough disk space
 - One job is processed at a time; the UI uploads one file at a time
-- No job cancellation/deletion endpoint (planned for a later phase)
 - Upload is validated synchronously; very large files hold the request open until probing finishes
-- Uploaded originals are never cleaned up automatically
+- There is no automatic retention policy: finished jobs keep their upload and clips until you delete them, and only orphan directories without a database row are cleaned automatically
+- Cancellation is checked at stage boundaries and inside subprocess waits, not between every decoded frame; a stage that ignores the token finishes its current unit of work before stopping
 - Transcripts are stored and exposed as JSON, but the UI only shows a summary, not the full text
 - Selection is sequential per window, so very long recordings can take a while on CPU-only hardware

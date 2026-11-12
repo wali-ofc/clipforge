@@ -19,6 +19,7 @@ from app.services.clip_selection import ClipSelector
 from app.services.rendering import ClipRenderer
 from app.services.speaker_tracking import SpeakerTracker
 from app.services.transcription import Transcriber
+from app.utils.cancellation import CancelToken
 from app.utils.time import utc_now
 from app.worker.pipeline import claim_next_queued_job, process_job
 
@@ -70,10 +71,48 @@ class JobWorker:
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
         self._run_once_guard = threading.Lock()
+        # Held while a queued job is claimed and its cancel token registered.
+        # Delete requests take the same lock so they cannot miss a job that is
+        # just entering the pipeline.
+        self._claim_guard = threading.Lock()
+        self._cancel_guard = threading.Lock()
+        self._cancel_tokens: dict[str, CancelToken] = {}
 
     @property
     def is_running(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
+
+    def is_processing(self, job_id: str) -> bool:
+        """Return True while this worker owns a cancel token for the job."""
+        with self._cancel_guard:
+            return job_id in self._cancel_tokens
+
+    def request_cancel(self, job_id: str) -> bool:
+        """Request cancellation for a running job.
+
+        Returns True when the job was actively processing. Taking the claim
+        lock closes the race where a delete request arrives just as the worker
+        is claiming the job.
+        """
+        with self._claim_guard:
+            with self._cancel_guard:
+                token = self._cancel_tokens.get(job_id)
+            if token is None:
+                return False
+            token.cancel()
+            return True
+
+    def wait_for_job(self, job_id: str, timeout: float) -> bool:
+        """Wait for a running job to stop touching its files.
+
+        Returns True when the job is not running or stopped before the
+        timeout, and False when it is still unwinding.
+        """
+        with self._cancel_guard:
+            token = self._cancel_tokens.get(job_id)
+        if token is None:
+            return True
+        return token.done.wait(max(0.0, timeout))
 
     def start(self) -> None:
         if self.is_running:
@@ -113,17 +152,28 @@ class JobWorker:
         """Process at most one queued job. Returns True if a job was handled."""
         with self._run_once_guard:
             with self.session_factory() as session:
-                job = claim_next_queued_job(session)
-                if job is None:
-                    return False
+                with self._claim_guard:
+                    job = claim_next_queued_job(session)
+                    if job is None:
+                        return False
+                    token = CancelToken()
+                    with self._cancel_guard:
+                        self._cancel_tokens[job.id] = token
+
                 logger.info("Worker claimed job %s", job.id)
-                process_job(
-                    session,
-                    job,
-                    self.settings,
-                    self.transcriber,
-                    self.selector,
-                    self.speaker_tracker,
-                    self.renderer,
-                )
+                try:
+                    process_job(
+                        session,
+                        job,
+                        self.settings,
+                        self.transcriber,
+                        self.selector,
+                        self.speaker_tracker,
+                        self.renderer,
+                        cancel_token=token,
+                    )
+                finally:
+                    token.finish()
+                    with self._cancel_guard:
+                        self._cancel_tokens.pop(job.id, None)
                 return True
