@@ -1,17 +1,27 @@
 @import "tailwindcss";
 
 @theme {
-  --color-surface-950: #07080a;
-  --color-surface-900: #0b0d11;
-  --color-surface-850: #0f1217;
-  --color-surface-800: #13171e;
-  --color-surface-700: #1c212b;
-  --color-surface-600: #2a3040;
-  --color-forge-200: #ffe1bf;
-  --color-forge-300: #ffc98f;
-  --color-forge-400: #ffae5d;
-  --color-forge-500: #f58a3b;
-  --color-forge-600: #d96a1f;
+  /* Warm paper ground, deep ink, and a single teal working accent. */
+  --color-paper-50: #fffdf8;
+  --color-paper-100: #faf7ef;
+  --color-paper-150: #f5f0e5;
+  --color-paper-200: #efe9dc;
+  --color-paper-300: #e2dac9;
+  --color-paper-400: #cdc3ae;
+  --color-ink-900: #17211e;
+  --color-ink-800: #25332e;
+  --color-ink-700: #3b4b45;
+  --color-ink-500: #5f6d67;
+  --color-ink-400: #66736d;
+  --color-line: #e6dfd0;
+  --color-line-strong: #d2c8b4;
+  --color-teal-50: #e9f3f0;
+  --color-teal-100: #d3e8e3;
+  --color-teal-200: #aed4cc;
+  --color-teal-300: #6fada2;
+  --color-teal-500: #0f6b62;
+  --color-teal-600: #0b564f;
+  --color-teal-700: #08443f;
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, sans-serif;
   --font-mono: ui-monospace, "SFMono-Regular", "Cascadia Code", Consolas,
@@ -19,7 +29,7 @@
 }
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 * {
@@ -28,25 +38,29 @@
 
 html {
   min-height: 100%;
-  background: var(--color-surface-950);
+  background: var(--color-paper-100);
 }
 
 body {
   min-height: 100vh;
   margin: 0;
   background:
-    radial-gradient(1100px 620px at 50% -18%, rgb(245 138 59 / 0.14), transparent 62%),
-    radial-gradient(820px 520px at 92% 4%, rgb(94 92 230 / 0.08), transparent 60%),
-    var(--color-surface-950);
-  color: #f4f4f5;
+    radial-gradient(
+      980px 520px at 50% -12%,
+      rgb(15 107 98 / 0.08),
+      transparent 64%
+    ),
+    var(--color-paper-100);
+  color: var(--color-ink-900);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  caret-color: var(--color-teal-500);
 }
 
 ::selection {
-  background: rgb(245 138 59 / 0.32);
-  color: #fff7ed;
+  background: rgb(15 107 98 / 0.18);
+  color: var(--color-ink-900);
 }
 
 a,
@@ -56,19 +70,8 @@ input {
 }
 
 :focus-visible {
-  outline: 2px solid var(--color-forge-400);
+  outline: 2px solid var(--color-teal-500);
   outline-offset: 3px;
-}
-
-@keyframes rise {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 @keyframes soft-pulse {
@@ -90,22 +93,6 @@ input {
   }
 }
 
-.reveal {
-  animation: rise 0.65s cubic-bezier(0.22, 0.68, 0.22, 1) both;
-}
-
-.reveal-1 {
-  animation-delay: 0.07s;
-}
-
-.reveal-2 {
-  animation-delay: 0.14s;
-}
-
-.reveal-3 {
-  animation-delay: 0.21s;
-}
-
 .status-dot {
   animation: soft-pulse 1.6s ease-in-out infinite;
 }
@@ -118,7 +105,7 @@ input {
   background: linear-gradient(
     90deg,
     transparent,
-    rgb(255 255 255 / 0.28),
+    rgb(255 255 255 / 0.36),
     transparent
   );
   animation: sweep 1.8s ease-in-out infinite;

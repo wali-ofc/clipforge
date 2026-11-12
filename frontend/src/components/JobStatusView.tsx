@@ -35,15 +35,15 @@ import type { Clip, Job, JobState } from "@/types/job";
 
 function badgeClasses(state: JobState): string {
   if (state === "completed") {
-    return "border-emerald-400/25 bg-emerald-400/10 text-emerald-200";
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
   }
   if (state === "failed") {
-    return "border-red-400/25 bg-red-400/10 text-red-200";
+    return "border-red-200 bg-red-50 text-red-700";
   }
   if (state === "cancelled") {
-    return "border-white/10 bg-white/5 text-zinc-400";
+    return "border-line bg-paper-200 text-ink-700";
   }
-  return "border-forge-500/25 bg-forge-500/10 text-forge-200";
+  return "border-teal-200 bg-teal-50 text-teal-700";
 }
 
 function StatusIcon({ state }: { state: JobState }) {
@@ -61,12 +61,15 @@ function StatusIcon({ state }: { state: JobState }) {
 
 function statusIconClasses(state: JobState): string {
   if (state === "completed") {
-    return "border-emerald-400/25 bg-emerald-400/10 text-emerald-200";
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
   }
   if (state === "failed") {
-    return "border-red-400/25 bg-red-400/10 text-red-200";
+    return "border-red-200 bg-red-50 text-red-700";
   }
-  return "border-forge-500/25 bg-forge-500/10 text-forge-200";
+  if (state === "cancelled") {
+    return "border-line bg-paper-200 text-ink-700";
+  }
+  return "border-teal-200 bg-teal-50 text-teal-700";
 }
 
 function Detail({
@@ -79,13 +82,13 @@ function Detail({
   mono?: boolean;
 }) {
   return (
-    <div className="rounded-xl border border-white/[0.06] bg-white/[0.018] px-3.5 py-3">
-      <dt className="text-[10px] font-medium uppercase tracking-[0.16em] text-zinc-600">
+    <div className="rounded-xl border border-line bg-paper-50 px-3.5 py-3">
+      <dt className="text-[10px] font-medium uppercase tracking-[0.16em] text-ink-400">
         {label}
       </dt>
       <dd
         className={[
-          "mt-1.5 text-sm text-zinc-200",
+          "mt-1.5 text-sm text-ink-800",
           mono ? "font-mono text-[12px]" : "",
         ].join(" ")}
       >
@@ -120,12 +123,12 @@ function trackingLabel(clip: Clip): string {
 
 function trackingTone(clip: Clip): string {
   if (clip.speaker_tracking_status === "tracked") {
-    return "border-emerald-400/20 bg-emerald-400/[0.06] text-emerald-200";
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
   }
   if (clip.speaker_tracking_status === "fallback") {
-    return "border-amber-400/20 bg-amber-400/[0.06] text-amber-200";
+    return "border-amber-200 bg-amber-50 text-amber-800";
   }
-  return "border-white/10 bg-white/[0.03] text-zinc-400";
+  return "border-line bg-paper-100 text-ink-500";
 }
 
 function fallbackNote(clip: Clip): string | null {
@@ -159,16 +162,16 @@ function ClipCard({ clip, index }: { clip: Clip; index: number }) {
   const note = fallbackNote(clip);
   const tone =
     score == null
-      ? "border-white/10 bg-white/[0.03] text-zinc-400"
+      ? "border-line bg-paper-100 text-ink-500"
       : score >= 75
-        ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-200"
+        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
         : score >= 55
-          ? "border-forge-500/25 bg-forge-500/10 text-forge-200"
-          : "border-amber-400/20 bg-amber-400/10 text-amber-200";
+          ? "border-teal-200 bg-teal-50 text-teal-700"
+          : "border-amber-200 bg-amber-50 text-amber-800";
 
   return (
-    <article className="flex flex-col rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4 transition hover:border-white/[0.14] sm:p-5">
-      <div className="relative mx-auto aspect-[9/16] w-full max-w-[220px] overflow-hidden rounded-xl border border-white/[0.08] bg-black/60">
+    <article className="flex flex-col rounded-2xl border border-line bg-paper-50 p-4 transition hover:border-line-strong sm:p-5">
+      <div className="relative mx-auto aspect-[9/16] w-full max-w-[220px] overflow-hidden rounded-xl border border-line bg-ink-900">
         {isRendered ? (
           <video
             src={getClipFileUrl(clip.id)}
@@ -180,20 +183,20 @@ function ClipCard({ clip, index }: { clip: Clip; index: number }) {
           />
         ) : isRendering ? (
           <div className="flex h-full flex-col items-center justify-center gap-2.5 p-4 text-center">
-            <SpinnerIcon className="h-6 w-6 animate-spin text-forge-400" />
-            <p className="text-xs font-medium text-forge-200">
+            <SpinnerIcon className="h-6 w-6 animate-spin text-teal-300" />
+            <p className="text-xs font-medium text-teal-100">
               Rendering 9:16 MP4…
             </p>
           </div>
         ) : isFailed ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 p-4 text-center text-red-300">
-            <AlertIcon className="h-6 w-6 text-red-400" />
+            <AlertIcon className="h-6 w-6 text-red-300" />
             <p className="text-[11px] font-medium leading-tight">
               Rendering failed
             </p>
           </div>
         ) : (
-          <div className="flex h-full flex-col items-center justify-center gap-2 p-4 text-center text-zinc-500">
+          <div className="flex h-full flex-col items-center justify-center gap-2 p-4 text-center text-paper-300">
             <FileVideoIcon className="h-6 w-6" />
             <p className="text-[11px]">Render pending</p>
           </div>
@@ -202,10 +205,10 @@ function ClipCard({ clip, index }: { clip: Clip; index: number }) {
 
       <div className="mt-4 flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-400">
+          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-500">
             Clip {String(index + 1).padStart(2, "0")}
           </p>
-          <h3 className="mt-1.5 text-sm font-semibold leading-5 text-zinc-100">
+          <h3 className="mt-1.5 text-sm font-semibold leading-5 text-ink-900">
             {clip.title}
           </h3>
         </div>
@@ -222,25 +225,25 @@ function ClipCard({ clip, index }: { clip: Clip; index: number }) {
       </div>
 
       {clip.hook ? (
-        <p className="mt-2.5 text-xs leading-5 text-zinc-300">{clip.hook}</p>
+        <p className="mt-2.5 text-xs leading-5 text-ink-700">{clip.hook}</p>
       ) : null}
       {clip.reason ? (
-        <p className="mt-1.5 text-[11px] leading-5 text-zinc-400">
+        <p className="mt-1.5 text-[11px] leading-5 text-ink-500">
           {clip.reason}
         </p>
       ) : null}
 
-      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px] text-zinc-400">
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px] text-ink-500">
         <span>
           {formatDuration(clip.start_seconds)} – {formatDuration(clip.end_seconds)}
         </span>
-        <span aria-hidden="true" className="text-zinc-700">
+        <span aria-hidden="true" className="text-ink-400">
           ·
         </span>
         <span>{formatDuration(clip.duration_seconds)}</span>
         {clip.width && clip.height ? (
           <>
-            <span aria-hidden="true" className="text-zinc-700">
+            <span aria-hidden="true" className="text-ink-400">
               ·
             </span>
             <span>
@@ -250,7 +253,7 @@ function ClipCard({ clip, index }: { clip: Clip; index: number }) {
         ) : null}
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1.5 border-t border-white/[0.05] pt-2.5">
+      <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1.5 border-t border-line pt-2.5">
         <span
           className={[
             "rounded-md border px-1.5 py-0.5 font-mono text-[10px]",
@@ -260,36 +263,36 @@ function ClipCard({ clip, index }: { clip: Clip; index: number }) {
           {trackingLabel(clip)}
         </span>
         {confidence != null ? (
-          <span className="font-mono text-[10px] text-zinc-400">
+          <span className="font-mono text-[10px] text-ink-500">
             {confidence}% speaker confidence
           </span>
         ) : null}
         {cropSamples > 0 ? (
-          <span className="font-mono text-[10px] text-zinc-400">
+          <span className="font-mono text-[10px] text-ink-500">
             {cropSamples} crop samples
           </span>
         ) : null}
       </div>
 
       {note ? (
-        <p className="mt-2 flex items-start gap-1.5 rounded-lg border border-amber-400/15 bg-amber-400/[0.05] px-2.5 py-2 text-[10px] leading-4 text-amber-200/80">
+        <p className="mt-2 flex items-start gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-[10px] leading-4 text-amber-800">
           <AlertIcon className="mt-px h-3 w-3 shrink-0" />
           <span>{note}</span>
         </p>
       ) : null}
 
       {isFailed && clip.error ? (
-        <p className="mt-2 text-[10px] leading-4 text-red-300/80">
+        <p className="mt-2 text-[10px] leading-4 text-red-600">
           Error: {clip.error}
         </p>
       ) : null}
 
       {isRendered ? (
-        <div className="mt-auto border-t border-white/[0.06] pt-3">
+        <div className="mt-auto border-t border-line pt-3">
           <a
             href={getClipFileUrl(clip.id, true)}
             download
-            className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-forge-500 px-4 py-2.5 text-xs font-semibold text-[#1b0d04] shadow-[0_10px_24px_-12px_rgba(245,138,59,0.6)] transition hover:bg-forge-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-forge-300"
+            className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-teal-500 px-4 py-2.5 text-xs font-semibold text-white shadow-[0_8px_20px_-10px_rgba(15,107,98,0.4)] transition hover:bg-teal-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-500"
           >
             <DownloadIcon className="h-4 w-4" />
             Download MP4
@@ -303,9 +306,9 @@ function ClipCard({ clip, index }: { clip: Clip; index: number }) {
 function Skeleton() {
   return (
     <div className="space-y-5" aria-hidden="true">
-      <div className="h-40 animate-pulse rounded-2xl border border-white/[0.06] bg-white/[0.02]" />
-      <div className="h-24 animate-pulse rounded-2xl border border-white/[0.06] bg-white/[0.02]" />
-      <div className="h-48 animate-pulse rounded-2xl border border-white/[0.06] bg-white/[0.02]" />
+      <div className="h-40 animate-pulse rounded-2xl border border-line bg-paper-200/70" />
+      <div className="h-24 animate-pulse rounded-2xl border border-line bg-paper-200/70" />
+      <div className="h-48 animate-pulse rounded-2xl border border-line bg-paper-200/70" />
     </div>
   );
 }
@@ -318,20 +321,20 @@ function ErrorState({
   onRetry: () => void;
 }) {
   return (
-    <div className="rounded-2xl border border-red-400/20 bg-red-400/[0.05] p-6">
+    <div className="rounded-2xl border border-red-200 bg-red-50 p-6">
       <div className="flex items-start gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-red-400/20 bg-red-400/10 text-red-300">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-red-200 bg-red-50 text-red-600">
           <AlertIcon className="h-5 w-5" />
         </div>
         <div>
-          <h2 className="text-base font-semibold text-red-100">
+          <h2 className="text-base font-semibold text-red-800">
             Could not load this job
           </h2>
-          <p className="mt-1.5 text-sm leading-6 text-red-200/80">{message}</p>
+          <p className="mt-1.5 text-sm leading-6 text-red-700">{message}</p>
           <button
             type="button"
             onClick={onRetry}
-            className="mt-4 inline-flex items-center gap-2 rounded-lg border border-red-300/20 bg-red-300/[0.06] px-3 py-2 text-xs font-medium text-red-100 transition hover:bg-red-300/10"
+            className="mt-4 inline-flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-800 transition hover:bg-red-100"
           >
             Try again
             <ArrowRightIcon className="h-3.5 w-3.5" />
@@ -494,24 +497,24 @@ export function JobStatusView({ jobId }: { jobId: string }) {
       <div className="space-y-6">
         <Link
           href="/"
-          className="inline-flex items-center gap-2 text-xs font-medium text-zinc-500 transition hover:text-zinc-300"
+          className="inline-flex items-center gap-2 text-xs font-medium text-ink-500 transition hover:text-ink-700"
         >
           <span aria-hidden="true">←</span> Upload another video
         </Link>
-        <div className="rounded-2xl border border-white/10 bg-surface-900/75 p-8 text-center">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03] text-zinc-400">
+        <div className="rounded-2xl border border-line bg-white p-8 text-center">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-line bg-paper-100 text-ink-500">
             <FileVideoIcon className="h-6 w-6" />
           </div>
-          <h1 className="mt-4 text-lg font-semibold text-zinc-100">
+          <h1 className="mt-4 text-lg font-semibold text-ink-900">
             Job not found
           </h1>
-          <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-zinc-500">
+          <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-ink-500">
             This job ID does not exist in the local database. It may have been
             deleted, or the link may be incorrect.
           </p>
           <Link
             href="/"
-            className="mt-6 inline-flex items-center gap-2 rounded-xl bg-forge-500 px-4 py-2.5 text-sm font-semibold text-[#1b0d04] transition hover:bg-forge-400"
+            className="mt-6 inline-flex items-center gap-2 rounded-xl bg-teal-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-teal-600"
           >
             Back to upload
             <ArrowRightIcon className="h-4 w-4" />
@@ -526,11 +529,11 @@ export function JobStatusView({ jobId }: { jobId: string }) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Link
           href="/"
-          className="inline-flex items-center gap-2 text-xs font-medium text-zinc-500 transition hover:text-zinc-300"
+          className="inline-flex items-center gap-2 text-xs font-medium text-ink-500 transition hover:text-ink-700"
         >
           <span aria-hidden="true">←</span> Upload another video
         </Link>
-        <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-600">
+        <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-400">
           Phase 7 · hardening
         </span>
       </div>
@@ -543,17 +546,17 @@ export function JobStatusView({ jobId }: { jobId: string }) {
 
       {job ? (
         <>
-          <section className="reveal overflow-hidden rounded-2xl border border-white/10 bg-surface-900/75 shadow-[0_24px_80px_-40px_rgba(0,0,0,0.9)]">
-            <div className="flex flex-col gap-4 border-b border-white/[0.06] px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <section className="overflow-hidden rounded-2xl border border-line bg-white shadow-[0_1px_2px_rgba(23,33,30,0.04),0_18px_48px_-28px_rgba(23,33,30,0.28)]">
+            <div className="flex flex-col gap-4 border-b border-line px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
               <div className="flex min-w-0 items-center gap-3">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-forge-500/20 bg-forge-500/10 text-forge-300">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-teal-200 bg-teal-50 text-teal-600">
                   <FileVideoIcon className="h-5 w-5" />
                 </div>
                 <div className="min-w-0">
-                  <h1 className="truncate text-[15px] font-semibold text-zinc-100">
+                  <h1 className="truncate text-[15px] font-semibold text-ink-900">
                     {job.original_filename}
                   </h1>
-                  <p className="mt-0.5 text-xs text-zinc-500">
+                  <p className="mt-0.5 text-xs text-ink-500">
                     {formatBytes(job.size_bytes)} · uploaded{" "}
                     {formatDate(job.created_at)}
                   </p>
@@ -575,7 +578,7 @@ export function JobStatusView({ jobId }: { jobId: string }) {
                   type="button"
                   onClick={() => void removeJob()}
                   disabled={deleting}
-                  className="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border border-red-400/20 bg-red-400/[0.05] px-3 py-1.5 text-[11px] font-medium text-red-200 transition hover:border-red-400/35 hover:bg-red-400/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-400/60 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-[11px] font-medium text-red-700 transition hover:border-red-300 hover:bg-red-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {deleting ? (
                     <SpinnerIcon className="h-3.5 w-3.5 animate-spin" />
@@ -606,28 +609,28 @@ export function JobStatusView({ jobId }: { jobId: string }) {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-baseline justify-between gap-4">
                     <h2
-                      className="text-sm font-semibold text-zinc-100"
+                      className="text-sm font-semibold text-ink-900"
                       aria-live="polite"
                     >
                       {stateLabel(job.state)}
                     </h2>
-                    <span className="font-mono text-xs text-zinc-500">
+                    <span className="font-mono text-xs text-ink-500">
                       {job.progress}%
                     </span>
                   </div>
-                  <p className="mt-1 text-sm leading-6 text-zinc-400">
+                  <p className="mt-1 text-sm leading-6 text-ink-500">
                     {job.stage_message}
                   </p>
                 </div>
               </div>
 
-              <div className="relative mt-4 h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
+              <div className="relative mt-4 h-1.5 overflow-hidden rounded-full bg-paper-200">
                 <div
                   className={[
                     "relative h-full overflow-hidden rounded-full transition-[width] duration-500",
                     job.state === "failed"
-                      ? "bg-red-400"
-                      : "bg-gradient-to-r from-forge-500 to-forge-300",
+                      ? "bg-red-500"
+                      : "bg-teal-500",
                     !isTerminalState(job.state) && job.progress < 100
                       ? "progress-sheen"
                       : "",
@@ -639,7 +642,7 @@ export function JobStatusView({ jobId }: { jobId: string }) {
               </div>
 
               {!isTerminalState(job.state) ? (
-                <p className="mt-3 text-[11px] text-zinc-600">
+                <p className="mt-3 text-[11px] text-ink-400">
                   This page refreshes automatically. Jobs persist if you close
                   the tab. Cancelling stops the worker and deletes the upload,
                   work files, and any rendered clips.
@@ -649,7 +652,7 @@ export function JobStatusView({ jobId }: { jobId: string }) {
               {deleteError ? (
                 <p
                   role="alert"
-                  className="mt-3 flex items-start gap-2 rounded-lg border border-red-400/20 bg-red-400/[0.05] px-3 py-2 text-[11px] leading-5 text-red-200"
+                  className="mt-3 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] leading-5 text-red-700"
                 >
                   <AlertIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                   <span>{deleteError}</span>
@@ -661,13 +664,13 @@ export function JobStatusView({ jobId }: { jobId: string }) {
           {error ? (
             <div
               role="alert"
-              className="flex flex-col gap-3 rounded-xl border border-amber-400/20 bg-amber-400/[0.05] px-4 py-3 text-xs text-amber-100 sm:flex-row sm:items-center sm:justify-between"
+              className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 sm:flex-row sm:items-center sm:justify-between"
             >
               <span>Connection lost. Retrying automatically. {error}</span>
               <button
                 type="button"
                 onClick={retryNow}
-                className="self-start font-medium text-amber-200 underline decoration-amber-300/40 underline-offset-4 sm:self-auto"
+                className="self-start font-medium text-amber-800 underline decoration-amber-300/40 underline-offset-4 sm:self-auto"
               >
                 Retry now
               </button>
@@ -675,14 +678,14 @@ export function JobStatusView({ jobId }: { jobId: string }) {
           ) : null}
 
           {job.state === "failed" ? (
-            <section className="rounded-2xl border border-red-400/20 bg-red-400/[0.045] px-5 py-4">
+            <section className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4">
               <div className="flex items-start gap-3">
-                <AlertIcon className="mt-0.5 h-4 w-4 shrink-0 text-red-300" />
+                <AlertIcon className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
                 <div>
-                  <h2 className="text-sm font-semibold text-red-100">
+                  <h2 className="text-sm font-semibold text-red-800">
                     Processing failed
                   </h2>
-                  <p className="mt-1 text-sm leading-6 text-red-200/80">
+                  <p className="mt-1 text-sm leading-6 text-red-700">
                     {job.error ?? "The pipeline reported an unknown error."}
                   </p>
                 </div>
@@ -691,14 +694,14 @@ export function JobStatusView({ jobId }: { jobId: string }) {
           ) : null}
 
           {job.state === "cancelled" ? (
-            <section className="rounded-2xl border border-white/10 bg-white/[0.02] px-5 py-4">
+            <section className="rounded-2xl border border-line bg-paper-50 px-5 py-4">
               <div className="flex items-start gap-3">
-                <XIcon className="mt-0.5 h-4 w-4 shrink-0 text-zinc-400" />
+                <XIcon className="mt-0.5 h-4 w-4 shrink-0 text-ink-500" />
                 <div>
-                  <h2 className="text-sm font-semibold text-zinc-200">
+                  <h2 className="text-sm font-semibold text-ink-800">
                     Job cancelled
                   </h2>
-                  <p className="mt-1 text-sm leading-6 text-zinc-400">
+                  <p className="mt-1 text-sm leading-6 text-ink-500">
                     Processing stopped before completion and temporary work
                     files were cleaned up. Delete the job to remove its upload
                     and any clips that were already rendered.
@@ -709,18 +712,18 @@ export function JobStatusView({ jobId }: { jobId: string }) {
           ) : null}
 
           {job.state === "completed" ? (
-            <section className="rounded-2xl border border-forge-500/20 bg-forge-500/[0.05] px-5 py-4">
+            <section className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4">
               <div className="flex items-start gap-3">
-                <CheckIcon className="mt-0.5 h-4 w-4 shrink-0 text-forge-300" />
+                <CheckIcon className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
                 <div>
-                  <h2 className="text-sm font-semibold text-forge-200">
+                  <h2 className="text-sm font-semibold text-emerald-800">
                     {job.has_speech === false
                       ? "No useful speech found"
                       : job.clip_count > 0
                         ? "Clips rendered & ready to download"
                         : "No candidate clips found"}
                   </h2>
-                  <p className="mt-1 text-sm leading-6 text-forge-200/65">
+                  <p className="mt-1 text-sm leading-6 text-emerald-700">
                     {job.has_speech === false
                       ? "The audio was processed but produced no usable speech segments. No clips were selected; speaker tracking and rendering were skipped."
                       : job.clip_count > 0
@@ -733,22 +736,22 @@ export function JobStatusView({ jobId }: { jobId: string }) {
           ) : null}
 
           {job.clip_count > 0 ? (
-            <section className="rounded-2xl border border-white/10 bg-surface-900/60 p-5 sm:p-6">
+            <section className="rounded-2xl border border-line bg-white p-5 sm:p-6">
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">
+                <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-ink-500">
                   Rendered clips
                 </h2>
-                <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-700">
+                <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-400">
                   {job.clip_selection_model ?? "local model"} · heuristic score
                 </span>
               </div>
 
               {clipsError ? (
-                <p className="rounded-lg border border-amber-400/20 bg-amber-400/[0.05] px-3 py-2 text-xs text-amber-100">
+                <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                   {clipsError}
                 </p>
               ) : clips.length === 0 ? (
-                <p className="text-xs text-zinc-500">Loading clip candidates…</p>
+                <p className="text-xs text-ink-500">Loading clip candidates…</p>
               ) : (
                 <div className="grid gap-4 sm:grid-cols-2">
                   {clips.map((clip, index) => (
@@ -757,7 +760,7 @@ export function JobStatusView({ jobId }: { jobId: string }) {
                 </div>
               )}
 
-              <p className="mt-4 text-[11px] leading-5 text-zinc-400">
+              <p className="mt-4 text-[11px] leading-5 text-ink-500">
                 Clips are H.264 video with AAC audio in 9:16 portrait at the
                 configured resolution. Clip potential is a deterministic
                 weighted score from hook, clarity, payoff, interest, and
@@ -770,12 +773,12 @@ export function JobStatusView({ jobId }: { jobId: string }) {
           ) : null}
 
           {job.has_transcript ? (
-            <section className="rounded-2xl border border-white/10 bg-surface-900/60 p-5 sm:p-6">
+            <section className="rounded-2xl border border-line bg-white p-5 sm:p-6">
               <div className="mb-4 flex items-center justify-between gap-3">
-                <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">
+                <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-ink-500">
                   Transcript
                 </h2>
-                <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-700">
+                <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-400">
                   internal data
                 </span>
               </div>
@@ -793,22 +796,22 @@ export function JobStatusView({ jobId }: { jobId: string }) {
                   value={job.has_speech ? "Detected" : "None detected"}
                 />
               </dl>
-              <p className="mt-3 text-[11px] leading-5 text-zinc-600">
+              <p className="mt-3 text-[11px] leading-5 text-ink-400">
                 Word-level timestamps are stored in the job work directory.
                 Captions are not generated or burned into any video.
               </p>
             </section>
           ) : null}
 
-          <section className="rounded-2xl border border-white/10 bg-surface-900/60 p-5 sm:p-6">
+          <section className="rounded-2xl border border-line bg-white p-5 sm:p-6">
             <div className="mb-4 flex items-center justify-between gap-3">
-              <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">
+              <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-ink-500">
                 Media details
               </h2>
               <button
                 type="button"
                 onClick={() => void copyJobId()}
-                className="inline-flex items-center gap-1.5 rounded-md border border-white/[0.07] bg-white/[0.025] px-2 py-1 font-mono text-[10px] text-zinc-500 transition hover:border-white/15 hover:text-zinc-300"
+                className="inline-flex items-center gap-1.5 rounded-md border border-line bg-paper-100 px-2 py-1 font-mono text-[10px] text-ink-500 transition hover:border-line-strong hover:text-ink-700"
                 title="Copy job ID"
               >
                 <CopyIcon className="h-3 w-3" />

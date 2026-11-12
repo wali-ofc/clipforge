@@ -10,7 +10,7 @@ export function LogoMark({ className = "h-9 w-9" }: { className?: string }) {
       fill="none"
       aria-hidden="true"
     >
-      <rect width="40" height="40" rx="11" fill="#F58A3B" />
+      <rect width="40" height="40" rx="11" fill="#0F6B62" />
       <rect
         x="1"
         y="1"
@@ -18,16 +18,16 @@ export function LogoMark({ className = "h-9 w-9" }: { className?: string }) {
         height="38"
         rx="10"
         stroke="white"
-        strokeOpacity="0.18"
+        strokeOpacity="0.2"
         strokeWidth="1.5"
       />
-      <path d="M16.2 12.6 29 19.4c.9.5.9 1.7 0 2.2l-12.8 6.8c-.9.5-2-.2-2-1.2V13.8c0-1 1.1-1.7 2-1.2Z" fill="#1A0E05" />
+      <path d="M16.2 12.6 29 19.4c.9.5.9 1.7 0 2.2l-12.8 6.8c-.9.5-2-.2-2-1.2V13.8c0-1 1.1-1.7 2-1.2Z" fill="#FFFDF8" />
       <path
         d="M11.5 10.5h3.2M11.5 15.2h2.4"
-        stroke="#1A0E05"
+        stroke="#FFFDF8"
         strokeWidth="1.6"
         strokeLinecap="round"
-        opacity=".55"
+        opacity=".65"
       />
     </svg>
   );
