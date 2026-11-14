@@ -218,6 +218,7 @@ def test_faster_whisper_transcriber_uses_model_and_cleans_audio(
         model_factory=lambda _settings: model,
     )
     progress: list[float] = []
+    stages: list[str] = []
     work_dir = tmp_path / "work" / "job"
 
     transcript = transcriber.transcribe(
@@ -225,6 +226,7 @@ def test_faster_whisper_transcriber_uses_model_and_cleans_audio(
         1.0,
         work_dir,
         on_progress=progress.append,
+        on_stage=stages.append,
     )
 
     assert transcript.has_speech is True
@@ -237,3 +239,7 @@ def test_faster_whisper_transcriber_uses_model_and_cleans_audio(
     assert not (work_dir / "audio.wav").exists()
     assert progress == sorted(progress)
     assert progress[-1] == 1.0
+    assert stages == [
+        "Loading Whisper model (first run may download it)",
+        "Transcribing audio",
+    ]

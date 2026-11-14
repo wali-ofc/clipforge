@@ -33,6 +33,7 @@ from app.utils.time import utc_now
 logger = logging.getLogger(__name__)
 
 ProgressCallback = Callable[[float], None]
+StageCallback = Callable[[str], None]
 
 # Whisper sometimes emits these markers for silence or non-speech audio.
 _NON_SPEECH_MARKERS = re.compile(
@@ -62,6 +63,7 @@ class Transcriber(Protocol):
         work_dir: Path,
         on_progress: ProgressCallback | None = None,
         cancel_check: Callable[[], bool] | None = None,
+        on_stage: StageCallback | None = None,
     ) -> Transcript:
         """Return a timestamped transcript for the source video."""
 
@@ -269,6 +271,11 @@ def _report(callback: ProgressCallback | None, fraction: float) -> None:
     callback(_clamp(float(fraction), 0.0, 1.0))
 
 
+def _report_stage(callback: StageCallback | None, message: str) -> None:
+    if callback is not None:
+        callback(message)
+
+
 def _load_whisper_model(
     settings: Settings,
     model_factory: Callable[[Settings], Any] | None = None,
@@ -326,6 +333,7 @@ def _load_whisper_model(
             ) from exc
 
         _MODEL_CACHE[key] = model
+        logger.info("Whisper model %s loaded", settings.whisper_model)
         return model
 
 
@@ -354,6 +362,7 @@ class FasterWhisperTranscriber:
         work_dir: Path,
         on_progress: ProgressCallback | None = None,
         cancel_check: Callable[[], bool] | None = None,
+        on_stage: StageCallback | None = None,
     ) -> Transcript:
         work_dir.mkdir(parents=True, exist_ok=True)
         audio_path = work_dir / "audio.wav"
@@ -371,7 +380,12 @@ class FasterWhisperTranscriber:
                 raise JobCancelled()
             _report(on_progress, 0.04)
 
+            _report_stage(
+                on_stage,
+                "Loading Whisper model (first run may download it)",
+            )
             model = _load_whisper_model(self.settings, self._model_factory)
+            _report_stage(on_stage, "Transcribing audio")
 
             try:
                 segment_iter, info = model.transcribe(

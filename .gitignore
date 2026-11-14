@@ -17,6 +17,7 @@ venv/
 htmlcov/
 .mypy_cache/
 .ruff_cache/
+*.egg-info/
 
 # Runtime data (uploads, work files, DB, rendered clips)
 backend/data/

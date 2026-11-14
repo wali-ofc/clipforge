@@ -43,6 +43,7 @@ class StubTranscriber:
         work_dir,
         on_progress=None,
         cancel_check=None,
+        on_stage=None,
     ):
         if on_progress:
             on_progress(0.1)

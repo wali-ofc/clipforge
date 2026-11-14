@@ -316,12 +316,18 @@ def _transcribe_with_progress(
         last_commit = now
         last_progress = progress
 
+    def on_stage(message: str) -> None:
+        _raise_if_cancelled(cancel_token)
+        apply_progress(job, job.progress, message, JobState.transcribing)
+        session.commit()
+
     return transcriber.transcribe(
         source_path,
         duration_seconds,
         work_dir,
         on_progress=on_progress,
         cancel_check=cancel_token.should_cancel if cancel_token else None,
+        on_stage=on_stage,
     )
 
 

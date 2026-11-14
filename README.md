@@ -136,7 +136,7 @@ Copy-Item .env.local.example .env.local
 
 ## Running
 
-Two processes, two terminals.
+Two processes, two terminals. For a step-by-step setup, troubleshooting table, and a detailed explanation of Ollama timeouts, see [RUNNING.md](RUNNING.md).
 
 ```powershell
 # Terminal 1 — API + background worker

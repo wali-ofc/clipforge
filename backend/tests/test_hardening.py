@@ -89,6 +89,7 @@ class BlockingTranscriber:
         work_dir,
         on_progress=None,
         cancel_check=None,
+        on_stage=None,
     ):
         self.started.set()
         while True:

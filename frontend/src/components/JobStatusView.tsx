@@ -533,9 +533,7 @@ export function JobStatusView({ jobId }: { jobId: string }) {
         >
           <span aria-hidden="true">←</span> Upload another video
         </Link>
-        <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-400">
-          Phase 7 · hardening
-        </span>
+        
       </div>
 
       {!job && !error ? <Skeleton /> : null}
