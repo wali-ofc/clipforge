@@ -8,7 +8,7 @@ import os
 import shutil
 import uuid
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
@@ -39,6 +39,7 @@ router = APIRouter(prefix="/api", tags=["jobs"])
 async def create_job(
     request: Request,
     file: UploadFile = File(...),
+    speaker_tracking: bool = Form(True),
     session: Session = Depends(get_session),
 ) -> Job:
     """Accept a streamed upload, validate it with ffprobe, and queue a job."""
@@ -134,6 +135,7 @@ async def create_job(
             has_audio=media_info.has_audio,
             container_format=media_info.container_format,
             frame_rate=media_info.frame_rate,
+            speaker_tracking_enabled=bool(speaker_tracking),
             created_at=utc_now(),
             updated_at=utc_now(),
         )

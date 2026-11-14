@@ -106,6 +106,8 @@ function trackingLabel(clip: Clip): string {
       return "Single-face tracking";
     case "fallback":
       return "Stable fallback face";
+    case "disabled":
+      return "Centered crop · tracking off";
     case "unavailable":
       return "Centre crop · tracking unavailable";
     case "failed":
@@ -128,6 +130,9 @@ function trackingTone(clip: Clip): string {
   if (clip.speaker_tracking_status === "fallback") {
     return "border-amber-200 bg-amber-50 text-amber-800";
   }
+  if (clip.speaker_tracking_status === "disabled") {
+    return "border-line bg-paper-100 text-ink-600";
+  }
   return "border-line bg-paper-100 text-ink-500";
 }
 
@@ -135,6 +140,8 @@ function fallbackNote(clip: Clip): string | null {
   switch (clip.speaker_tracking_status) {
     case "fallback":
       return "Speaker tracking used a stable fallback face, not active-speaker detection.";
+    case "disabled":
+      return "Speaker tracking was turned off for this job; this clip uses a stable centered 9:16 crop.";
     case "unavailable":
       return "Speaker tracking was unavailable; this clip uses a centre crop.";
     case "failed":
@@ -367,36 +374,50 @@ export function JobStatusView({ jobId }: { jobId: string }) {
     let cancelled = false;
     const controller = new AbortController();
 
-    getJobClips(jobId, controller.signal)
-      .then((data) => {
-        if (cancelled) {
-          return;
-        }
-        setClips(data);
-        setClipsError(null);
-      })
-      .catch((requestError) => {
-        if (cancelled) {
-          return;
-        }
-        if (
-          requestError instanceof DOMException &&
-          requestError.name === "AbortError"
-        ) {
-          return;
-        }
-        setClipsError(
-          requestError instanceof Error
-            ? requestError.message
-            : "Could not load clip candidates.",
-        );
-      });
+    const loadClips = () => {
+      getJobClips(jobId, controller.signal)
+        .then((data) => {
+          if (cancelled) {
+            return;
+          }
+          setClips(data);
+          setClipsError(null);
+        })
+        .catch((requestError) => {
+          if (cancelled) {
+            return;
+          }
+          if (
+            requestError instanceof DOMException &&
+            requestError.name === "AbortError"
+          ) {
+            return;
+          }
+          setClipsError(
+            requestError instanceof Error
+              ? requestError.message
+              : "Could not load clip candidates.",
+          );
+        });
+    };
+
+    loadClips();
+
+    // Refresh while rendering so cards update from "rendering" to playable/downloadable.
+    // Also re-fetch once the job reaches a terminal state to pick up final statuses.
+    let interval: ReturnType<typeof setInterval> | undefined;
+    if (!isTerminalState(job.state)) {
+      interval = setInterval(loadClips, 2500);
+    }
 
     return () => {
       cancelled = true;
       controller.abort();
+      if (interval) {
+        clearInterval(interval);
+      }
     };
-  }, [job?.clip_count, jobId, retryNonce]);
+  }, [job?.clip_count, job?.state, jobId, retryNonce]);
 
   useEffect(() => {
     let cancelled = false;
@@ -723,9 +744,9 @@ export function JobStatusView({ jobId }: { jobId: string }) {
                   </h2>
                   <p className="mt-1 text-sm leading-6 text-emerald-700">
                     {job.has_speech === false
-                      ? "The audio was processed but produced no usable speech segments. No clips were selected; speaker tracking and rendering were skipped."
+                      ? "The audio was processed but produced no usable speech segments. No clips were selected; crop planning and rendering were skipped."
                       : job.clip_count > 0
-                        ? `${job.clip_count} short clip${job.clip_count === 1 ? "" : "s"} extracted and rendered in 9:16 portrait with speaker-aware framing. Preview each clip and download the MP4 below.`
+                        ? `${job.clip_count} short clip${job.clip_count === 1 ? "" : "s"} extracted and rendered in 9:16 portrait ${job.speaker_tracking_enabled ? "with speaker-aware framing" : "with a centered crop"}. Preview each clip and download the MP4 below.`
                         : "The transcript was processed, but no self-contained moment fit the configured duration range. Try a longer recording or adjust the clip limits."}
                   </p>
                 </div>
@@ -762,10 +783,10 @@ export function JobStatusView({ jobId }: { jobId: string }) {
                 Clips are H.264 video with AAC audio in 9:16 portrait at the
                 configured resolution. Clip potential is a deterministic
                 weighted score from hook, clarity, payoff, interest, and
-                conciseness — not a virality prediction. When active-speaker
-                confidence is low or a face is missing, the planner uses an
-                explicit fallback and the card says so instead of claiming
-                speaker tracking.
+                conciseness — not a virality prediction. Speaker tracking is
+                optional per upload; when it is off, or when confidence is low
+                or a face is missing, the clip uses an explicit centered/stable
+                fallback and the card says so.
               </p>
             </section>
           ) : null}

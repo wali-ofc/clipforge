@@ -39,6 +39,7 @@ class JobRead(BaseModel):
 
     clip_count: int = 0
     clip_selection_model: str | None = None
+    speaker_tracking_enabled: bool = True
 
     created_at: datetime
     updated_at: datetime

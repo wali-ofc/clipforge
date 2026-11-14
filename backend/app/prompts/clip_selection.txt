@@ -9,17 +9,19 @@ Return at most {max_candidates} clips for this window.
 Rules:
 - Use absolute source timestamps in seconds, exactly as shown in the transcript.
 - Propose only moments that are self-contained and understandable without extra context.
+- The clip must begin at a natural start of a thought, question, or statement (not mid-sentence and not mid-explanation). Include a brief setup if needed so the opening makes sense on its own.
+- The clip must end with a clear conclusion, answer, punchline, or payoff. Do not cut off before the speaker finishes the point or before the payoff lands.
 - Prefer a clear hook, a useful insight, a surprising statement, humor, an emotional beat, or a satisfying payoff.
-- Reject moments that need missing context.
+- Reject moments that need missing context, that start abruptly, or that end without resolution.
 - Do not begin or end in the middle of a sentence or word.
 - Do not return overlapping duplicates. Keep each moment distinct.
 - If this window has no suitable moment, return an empty clips array.
-- Aim for clips inside the target length. A whole transcript segment may be shorter or longer, so choose start and end points that will still fit after trimming.
+- Aim for clips inside the target length. A whole transcript segment may be shorter or longer, so choose start and end points that will still fit after trimming while keeping a complete beginning and ending.
 
 Field guidance:
 - title: a short, specific label for the moment, not a generic placeholder.
 - hook: the opening line or idea that makes someone keep watching.
-- reason: one sentence explaining why the moment stands alone.
+- reason: one sentence explaining why the moment stands alone and ends with a satisfying payoff.
 
 Score calibration (0-10):
 - 9-10 is exceptional and rare.
@@ -31,7 +33,7 @@ Score calibration (0-10):
 - clarity: how easy the moment is to follow.
 - standalone: how little outside context it needs.
 - emotion_or_interest: how engaging, funny, surprising, or moving it is.
-- payoff: how satisfying the ending is.
+- payoff: how satisfying and complete the ending is.
 
 Transcript (absolute source seconds):
 {transcript}

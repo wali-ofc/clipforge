@@ -225,9 +225,14 @@ def process_job(
                 _cleanup_temp_files(settings, job.id)
 
                 if rendered_count > 0:
+                    framing = (
+                        "with speaker-aware framing"
+                        if getattr(job, "speaker_tracking_enabled", True)
+                        else "with a centered crop"
+                    )
                     message = (
                         f"Rendering complete: {rendered_count}/{len(candidates)} "
-                        f"clip(s) rendered in 9:16 portrait format."
+                        f"clip(s) rendered in 9:16 portrait format {framing}."
                     )
                 else:
                     message = (
@@ -383,13 +388,12 @@ def _track_clips_with_progress(
     tracker: SpeakerTracker | None,
     cancel_token: CancelToken | None = None,
 ) -> None:
-    """Plan a speaker-aware crop for every candidate clip.
+    """Plan a crop for every candidate clip.
 
-    A tracking failure is recorded on the clip with a stable centred fallback;
-    it never fails the whole job. This keeps fallback behaviour explicit
-    instead of silently presenting a static centre crop as tracking.
+    When speaker tracking is disabled for the job, a stable centred crop is used
+    for all clips. When enabled, a tracking failure is recorded per clip with a
+    centred fallback so the job can still render.
     """
-    active_tracker = tracker or OpenCVSpeakerTracker(settings)
     clips = list(
         session.execute(
             select(Clip)
@@ -402,13 +406,23 @@ def _track_clips_with_progress(
     if not clips:
         return
 
+    tracking_enabled = getattr(job, "speaker_tracking_enabled", True)
+    stage_label = (
+        "Planning speaker-aware crops"
+        if tracking_enabled
+        else "Planning centered crops"
+    )
     apply_progress(
         job,
         97,
-        "Planning speaker-aware crops",
+        stage_label,
         JobState.tracking_speakers,
     )
     session.commit()
+
+    active_tracker = None
+    if tracking_enabled:
+        active_tracker = tracker or OpenCVSpeakerTracker(settings)
 
     tracking_root = job_work_dir(settings, job.id) / "tracking"
     total = len(clips)
@@ -416,15 +430,28 @@ def _track_clips_with_progress(
         _check_cancelled(session, job, cancel_token)
         clip_work_dir = tracking_root / clip.id
         try:
-            result = active_tracker.track(
-                source_path,
-                clip.start_seconds,
-                clip.end_seconds,
-                job.width or 0,
-                job.height or 0,
-                transcript,
-                clip_work_dir,
-            )
+            if not tracking_enabled:
+                result = build_centered_result(
+                    clip.start_seconds,
+                    clip.end_seconds,
+                    job.width or 0,
+                    job.height or 0,
+                    settings,
+                    status="disabled",
+                    detail="Speaker tracking was turned off for this job; using a centered crop.",
+                    error_code="tracking_disabled",
+                )
+            else:
+                assert active_tracker is not None
+                result = active_tracker.track(
+                    source_path,
+                    clip.start_seconds,
+                    clip.end_seconds,
+                    job.width or 0,
+                    job.height or 0,
+                    transcript,
+                    clip_work_dir,
+                )
             clip.speaker_tracking_status = result.status
             clip.speaker_tracking_confidence = result.confidence
             clip.crop_plan = result.crop_plan
@@ -455,7 +482,7 @@ def _track_clips_with_progress(
         apply_progress(
             job,
             progress,
-            f"Planning speaker-aware crops ({index + 1}/{total})",
+            f"{stage_label} ({index + 1}/{total})",
             JobState.tracking_speakers,
         )
         session.commit()

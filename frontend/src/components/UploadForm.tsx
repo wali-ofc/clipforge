@@ -57,6 +57,7 @@ export function UploadForm() {
   const [isUploading, setIsUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [speakerTracking, setSpeakerTracking] = useState(true);
 
   const [health, setHealth] = useState<Health | null>(null);
   const [healthError, setHealthError] = useState<string | null>(null);
@@ -174,7 +175,10 @@ export function UploadForm() {
     setError(null);
 
     try {
-      const job = await uploadVideo(file, setProgress);
+      const job = await uploadVideo(file, {
+        onProgress: setProgress,
+        speakerTracking,
+      });
       router.push(`/jobs/${job.id}`);
     } catch (uploadError) {
       const message =
@@ -290,6 +294,28 @@ export function UploadForm() {
           )}
         </div>
 
+        <div className="mt-4 rounded-xl border border-line bg-paper-50 px-4 py-3">
+          <label className="flex cursor-pointer items-start gap-3">
+            <input
+              type="checkbox"
+              checked={speakerTracking}
+              onChange={(event) => setSpeakerTracking(event.target.checked)}
+              disabled={isUploading}
+              className="mt-0.5 h-4 w-4 rounded border-line-strong text-teal-600 focus:ring-teal-500 disabled:cursor-not-allowed"
+            />
+            <span className="min-w-0">
+              <span className="block text-sm font-medium text-ink-900">
+                Speaker / face tracking
+              </span>
+              <span className="mt-0.5 block text-[11px] leading-5 text-ink-500">
+                Keep on for podcasts or talking-head videos to follow the active
+                speaker. Turn off for gameplay, screen recordings, or other
+                non-podcast videos to use a stable centered 9:16 crop.
+              </span>
+            </span>
+          </label>
+        </div>
+
         {healthError ? (
           <div
             role="alert"
@@ -379,8 +405,8 @@ export function UploadForm() {
         />
         <p>
           Uploads are checked with ffprobe, transcribed locally with Whisper,
-          and rendered as 9:16 clips. One job runs at a time; you can cancel or
-          delete it from the job page.
+          and rendered as 9:16 clips. Speaker tracking is optional per upload.
+          One job runs at a time; you can cancel or delete it from the job page.
         </p>
       </div>
     </div>

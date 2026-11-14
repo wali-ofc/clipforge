@@ -359,27 +359,28 @@ def _fit_segment_range(
         duration = _range_duration(segments, i, j)
         return hard_min <= duration <= hard_max
 
-    # Too long: trim toward the target maximum first, then the hard maximum.
+    # Too long: trim toward the target maximum while preferring to preserve
+    # a complete ending/payoff (trim from the start first when possible).
     if _range_duration(segments, start_index, end_index) > target_max:
         candidate: tuple[int, int] | None = None
-        for end in range(end_index, start_index - 1, -1):
-            if fits_target(start_index, end):
-                candidate = (start_index, end)
+        for start in range(start_index, end_index + 1):
+            if fits_target(start, end_index):
+                candidate = (start, end_index)
                 break
         if candidate is None:
-            for start in range(start_index, end_index + 1):
-                if fits_target(start, end_index):
-                    candidate = (start, end_index)
-                    break
-        if candidate is None:
             for end in range(end_index, start_index - 1, -1):
-                if fits_hard(start_index, end):
+                if fits_target(start_index, end):
                     candidate = (start_index, end)
                     break
         if candidate is None:
             for start in range(start_index, end_index + 1):
                 if fits_hard(start, end_index):
                     candidate = (start, end_index)
+                    break
+        if candidate is None:
+            for end in range(end_index, start_index - 1, -1):
+                if fits_hard(start_index, end):
+                    candidate = (start_index, end)
                     break
         if candidate is None:
             return None

@@ -90,6 +90,7 @@ def _apply_sqlite_additive_migrations(engine: Engine) -> None:
             "has_speech": "BOOLEAN",
             "clip_count": "INTEGER NOT NULL DEFAULT 0",
             "clip_selection_model": "VARCHAR(128)",
+            "speaker_tracking_enabled": "BOOLEAN NOT NULL DEFAULT 1",
         },
         "clips": {
             "crop_plan": "JSON NOT NULL DEFAULT '{}'",

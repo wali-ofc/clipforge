@@ -33,6 +33,7 @@ export interface Job {
   has_speech: boolean | null;
   clip_count: number;
   clip_selection_model: string | null;
+  speaker_tracking_enabled: boolean;
   created_at: string;
   updated_at: string;
   started_at: string | null;

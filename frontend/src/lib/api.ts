@@ -192,8 +192,14 @@ export async function deleteJob(jobId: string): Promise<void> {
 
 export function uploadVideo(
   file: File,
-  onProgress?: (percent: number) => void,
+  options?: {
+    onProgress?: (percent: number) => void;
+    speakerTracking?: boolean;
+  },
 ): Promise<Job> {
+  const onProgress = options?.onProgress;
+  const speakerTracking = options?.speakerTracking ?? true;
+
   return new Promise((resolve, reject) => {
     const request = new XMLHttpRequest();
     request.open("POST", `${API_BASE_URL}/api/jobs`);
@@ -234,6 +240,7 @@ export function uploadVideo(
 
     const form = new FormData();
     form.append("file", file);
+    form.append("speaker_tracking", speakerTracking ? "true" : "false");
     request.send(form);
   });
 }

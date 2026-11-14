@@ -91,6 +91,9 @@ class Job(Base):
     clip_selection_model: Mapped[str | None] = mapped_column(
         String(128), nullable=True
     )
+    speaker_tracking_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now
