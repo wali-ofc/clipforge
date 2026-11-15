@@ -390,10 +390,14 @@ class FFmpegClipRenderer:
 
             args.append(str(output_path))
 
+            render_timeout = max(
+                float(settings.render_timeout_seconds),
+                duration * 4.0 + 120.0,
+            )
             try:
                 run_command(
                     args,
-                    timeout=settings.render_timeout_seconds,
+                    timeout=render_timeout,
                     cancel_check=cancel_check,
                 )
             except CommandCancelled as exc:
