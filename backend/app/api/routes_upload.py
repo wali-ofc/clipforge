@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import errno
+import json
 import logging
 import os
 import shutil
@@ -15,7 +16,7 @@ from starlette.concurrency import run_in_threadpool
 from app.api.deps import get_session
 from app.api.errors import api_error
 from app.config import Settings
-from app.models.job import Job, JobState
+from app.models.job import Job, JobKind, JobState
 from app.schemas.job import JobRead
 from app.services.media_probe import MediaProbeError, probe_media
 from app.services.tooling import media_tools_available
@@ -39,7 +40,10 @@ router = APIRouter(prefix="/api", tags=["jobs"])
 async def create_job(
     request: Request,
     file: UploadFile = File(...),
+    kind: str = Form(JobKind.ai_clipper.value),
     speaker_tracking: bool = Form(True),
+    segment_spec: str | None = Form(None),
+    segment_output_frame: str = Form("original"),
     session: Session = Depends(get_session),
 ) -> Job:
     """Accept a streamed upload, validate it with ffprobe, and queue a job."""
@@ -70,6 +74,36 @@ async def create_job(
             "FFmpeg and ffprobe are required to inspect uploads.",
         )
         raise api_error(503, "media_tools_unavailable", detail)
+
+    try:
+        job_kind = JobKind(kind)
+    except Exception:
+        await file.close()
+        raise api_error(400, "invalid_job_kind", "Unsupported job kind.")
+
+    normalized_segment_spec: str | None = None
+    normalized_segment_frame: str | None = None
+    segment_options: dict[str, object] = {}
+    if job_kind == JobKind.segmenter:
+        spec = (segment_spec or "").strip()
+        if not spec:
+            await file.close()
+            raise api_error(
+                400,
+                "missing_segment_spec",
+                "Provide timestamps to segment (one range per line for separate clips, or comma-separated ranges in a line/group to join into one clip).",
+            )
+        frame = (segment_output_frame or "original").strip().lower()
+        if frame not in {"original", "portrait_9_16"}:
+            await file.close()
+            raise api_error(
+                400,
+                "invalid_segment_frame",
+                "Segment output frame must be 'original' or 'portrait_9_16'.",
+            )
+        normalized_segment_spec = spec
+        normalized_segment_frame = frame
+        segment_options = {"output_frame": frame}
 
     original_filename = sanitize_display_filename(file.filename or "upload")
     extension = file_extension(file.filename or original_filename)
@@ -117,15 +151,21 @@ async def create_job(
 
         os.replace(temporary_path, final_path)
 
+        stage = (
+            "Queued for segmenting"
+            if job_kind == JobKind.segmenter
+            else "Queued for inspection"
+        )
         job = Job(
             id=job_id,
             original_filename=original_filename,
             stored_path=relative_to_data_dir(settings, final_path),
             content_type=file.content_type,
             size_bytes=size_bytes,
+            kind=job_kind.value,
             state=JobState.queued.value,
             progress=0,
-            stage_message="Queued for inspection",
+            stage_message=stage,
             duration_seconds=media_info.duration_seconds,
             width=media_info.width,
             height=media_info.height,
@@ -135,7 +175,12 @@ async def create_job(
             has_audio=media_info.has_audio,
             container_format=media_info.container_format,
             frame_rate=media_info.frame_rate,
-            speaker_tracking_enabled=bool(speaker_tracking),
+            speaker_tracking_enabled=bool(speaker_tracking)
+            if job_kind == JobKind.ai_clipper
+            else False,
+            segment_spec=normalized_segment_spec,
+            segment_output_frame=normalized_segment_frame,
+            segment_options=segment_options,
             created_at=utc_now(),
             updated_at=utc_now(),
         )
@@ -143,7 +188,8 @@ async def create_job(
         session.commit()
         job_created = True
         logger.info(
-            "Created job %s for %s (%s, %.1f s)",
+            "Created %s job %s for %s (%s, %.1f s)",
+            job.kind,
             job_id,
             original_filename,
             human_size(size_bytes),

@@ -235,3 +235,58 @@ export function DownloadIcon(props: IconProps) {
     </svg>
   );
 }
+
+export function ClapperIcon(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" {...props}>
+      <path
+        d="M4.5 8.5h15v9.75A2.25 2.25 0 0 1 17.25 20.5h-10.5A2.25 2.25 0 0 1 4.5 18.25V8.5Z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M4.5 8.5 7 4.75h4l-2.5 3.75m3 0 2.5-3.75h4L15.5 8.5M4.5 8.5h15"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="m10.5 12 4 2.3-4 2.2v-4.5Z" fill="currentColor" opacity=".9" />
+    </svg>
+  );
+}
+
+export function ScissorsIcon(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" {...props}>
+      <circle cx="7" cy="7.5" r="2.25" stroke="currentColor" strokeWidth="1.5" />
+      <circle cx="7" cy="16.5" r="2.25" stroke="currentColor" strokeWidth="1.5" />
+      <path
+        d="M8.8 8.7 19 15.5M8.8 15.3 19 8.5M9 9l4 3m-4 3 4-3"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+export function PanelLeftIcon(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" {...props}>
+      <rect x="3.75" y="4.75" width="16.5" height="14.5" rx="2.25" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M9 5v14" stroke="currentColor" strokeWidth="1.5" />
+      <path d="m14.5 9.5-2 2.5 2 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+export function MenuIcon(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" {...props}>
+      <path d="M4.5 7h15M4.5 12h15M4.5 17h15" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}

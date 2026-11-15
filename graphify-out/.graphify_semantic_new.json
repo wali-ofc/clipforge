@@ -1,0 +1,367 @@
+{
+  "nodes": [
+    {
+      "id": "agents_graphify_workflow",
+      "label": "Graphify workflow guidance for ClipForge",
+      "file_type": "concept",
+      "source_file": "D:\\py\\clipforge\\AGENTS.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "rationale": "Project guidance requires querying existing graphify artifacts before broad code search and keeping graph outputs updated after code changes."
+    },
+    {
+      "id": "readme_clipforge_overview",
+      "label": "ClipForge local-first AI video clipping",
+      "file_type": "concept",
+      "source_file": "D:\\py\\clipforge\\README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "rationale": "ClipForge processes long recordings locally into short vertical clips without cloud services or accounts."
+    },
+    {
+      "id": "readme_processing_pipeline",
+      "label": "ClipForge processing pipeline",
+      "file_type": "concept",
+      "source_file": "D:\\py\\clipforge\\README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "rationale": "Pipeline progresses queued->inspecting->transcribing->selecting_clips->tracking_speakers->rendering with monotonic progress and local tools."
+    },
+    {
+      "id": "readme_transcription",
+      "label": "Local transcription with faster-whisper",
+      "file_type": "concept",
+      "source_file": "D:\\py\\clipforge\\README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "rationale": "Uses faster-whisper with word-level timestamps; handles silent/no-audio cases while keeping transcript internal."
+    },
+    {
+      "id": "readme_clip_selection",
+      "label": "LLM clip selection via Ollama",
+      "file_type": "concept",
+      "source_file": "D:\\py\\clipforge\\README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "rationale": "Ollama proposes candidate moments over transcript windows; app validates, snaps boundaries, scores deterministically, and deduplicates."
+    },
+    {
+      "id": "readme_speaker_tracking",
+      "label": "Heuristic speaker tracking and crop planning",
+      "file_type": "concept",
+      "source_file": "D:\\py\\clipforge\\README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "rationale": "Samples frames inside candidates, tracks faces, estimates active speaker heuristically, and produces smoothed 9:16 crop plans with explicit fallback states."
+    },
+    {
+      "id": "readme_rendering",
+      "label": "Portrait clip rendering with FFmpeg",
+      "file_type": "concept",
+      "source_file": "D:\\py\\clipforge\\README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "rationale": "Renders per-clip H.264/AAC MP4s with dynamic crop driven by stored plan and verifies outputs with ffprobe."
+    },
+    {
+      "id": "readme_api_results",
+      "label": "API and results experience",
+      "file_type": "concept",
+      "source_file": "D:\\py\\clipforge\\README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "rationale": "Exposes job/transcript/clip metadata and streaming file endpoints; UI previews, downloads, and supports cooperative cancellation/deletion."
+    },
+    {
+      "id": "readme_storage_security",
+      "label": "Local storage and security hardening",
+      "file_type": "concept",
+      "source_file": "D:\\py\\clipforge\\README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "rationale": "Uses UUID-derived managed paths under backend/data with path containment checks, disk guards, and startup cleanup."
+    },
+    {
+      "id": "running_setup_and_prereqs",
+      "label": "Running ClipForge setup and prerequisites",
+      "file_type": "document",
+      "source_file": "D:\\py\\clipforge\\RUNNING.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "running_startup_and_health",
+      "label": "Starting services and checking health",
+      "file_type": "document",
+      "source_file": "D:\\py\\clipforge\\RUNNING.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "running_ollama_timeout_guidance",
+      "label": "Ollama timeout behavior and tuning guidance",
+      "file_type": "concept",
+      "source_file": "D:\\py\\clipforge\\RUNNING.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "rationale": "Documents per-window non-streaming Ollama requests, cold/warm timing, CPU constraints, and mitigations like higher timeout or faster models."
+    },
+    {
+      "id": "backend_app_prompts_clip_selection_prompt",
+      "label": "Clip selection prompt template",
+      "file_type": "document",
+      "source_file": "D:\\py\\clipforge\\backend\\app\\prompts\\clip_selection.txt",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "rationale": "Prompt instructs model to propose self-contained moments with absolute timestamps, strict duration limits, and calibrated component scores in schema-shaped JSON."
+    },
+    {
+      "id": "backend_requirements_lock_dependencies",
+      "label": "Pinned backend dependency set",
+      "file_type": "document",
+      "source_file": "D:\\py\\clipforge\\backend\\requirements.lock.txt",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "rationale": "Locks runtime/test dependencies including FastAPI, faster-whisper, OpenCV, ONNX runtime, SQLAlchemy, and media/network libraries."
+    },
+    {
+      "id": "frontend_agents_nextjs_rules",
+      "label": "Frontend Next.js agent guidance",
+      "file_type": "concept",
+      "source_file": "D:\\py\\clipforge\\frontend\\AGENTS.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "rationale": "Frontend declares Next.js-specific agent rules and points to bundled Next docs for version-accurate conventions."
+    }
+  ],
+  "edges": [
+    {
+      "source": "readme_clipforge_overview",
+      "target": "readme_processing_pipeline",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "D:\\py\\clipforge\\README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_processing_pipeline",
+      "target": "readme_transcription",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "D:\\py\\clipforge\\README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_processing_pipeline",
+      "target": "readme_clip_selection",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "D:\\py\\clipforge\\README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_processing_pipeline",
+      "target": "readme_speaker_tracking",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "D:\\py\\clipforge\\README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_processing_pipeline",
+      "target": "readme_rendering",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "D:\\py\\clipforge\\README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_processing_pipeline",
+      "target": "readme_api_results",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "D:\\py\\clipforge\\README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_storage_security",
+      "target": "readme_api_results",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "D:\\py\\clipforge\\README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_clip_selection",
+      "target": "backend_app_prompts_clip_selection_prompt",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "D:\\py\\clipforge\\README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "backend_app_prompts_clip_selection_prompt",
+      "target": "readme_clip_selection",
+      "relation": "rationale_for",
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "source_file": "D:\\py\\clipforge\\backend\\app\\prompts\\clip_selection.txt",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "running_setup_and_prereqs",
+      "target": "readme_storage_security",
+      "relation": "references",
+      "confidence": "INFERRED",
+      "confidence_score": 0.75,
+      "source_file": "D:\\py\\clipforge\\RUNNING.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "running_startup_and_health",
+      "target": "readme_api_results",
+      "relation": "references",
+      "confidence": "INFERRED",
+      "confidence_score": 0.75,
+      "source_file": "D:\\py\\clipforge\\RUNNING.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "running_ollama_timeout_guidance",
+      "target": "readme_clip_selection",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "D:\\py\\clipforge\\RUNNING.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "backend_requirements_lock_dependencies",
+      "target": "readme_transcription",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "D:\\py\\clipforge\\backend\\requirements.lock.txt",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "backend_requirements_lock_dependencies",
+      "target": "readme_speaker_tracking",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "D:\\py\\clipforge\\backend\\requirements.lock.txt",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "backend_requirements_lock_dependencies",
+      "target": "readme_rendering",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.75,
+      "source_file": "D:\\py\\clipforge\\backend\\requirements.lock.txt",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "agents_graphify_workflow",
+      "target": "readme_clipforge_overview",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.65,
+      "source_file": "D:\\py\\clipforge\\AGENTS.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "frontend_agents_nextjs_rules",
+      "target": "readme_api_results",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.55,
+      "source_file": "D:\\py\\clipforge\\frontend\\AGENTS.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "running_setup_and_prereqs",
+      "target": "running_startup_and_health",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "D:\\py\\clipforge\\RUNNING.md",
+      "source_location": null,
+      "weight": 1.0
+    }
+  ],
+  "hyperedges": [],
+  "input_tokens": 0,
+  "output_tokens": 0
+}

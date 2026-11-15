@@ -284,9 +284,22 @@ export function UploadForm() {
                 {isDragging ? "Drop your video here" : "Drag a video here"}
               </p>
               <p className="mt-1.5 text-xs leading-5 text-ink-500">
-                or <span className="text-teal-600">browse files</span> to get
-                started
+                or upload a file from your device
               </p>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  if (!isUploading) {
+                    inputRef.current?.click();
+                  }
+                }}
+                disabled={isUploading}
+                className="mt-4 inline-flex items-center gap-2 rounded-xl border border-teal-200 bg-white px-4 py-2 text-xs font-semibold text-teal-700 shadow-sm transition hover:border-teal-300 hover:bg-teal-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <UploadCloudIcon className="h-4 w-4" />
+                Upload from device
+              </button>
               <p className="mt-4 text-[11px] text-ink-400">
                 {formats.join(" · ")} · up to {formatBytes(maxUpload)}
               </p>

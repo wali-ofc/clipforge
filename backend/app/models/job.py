@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Float, Index, Integer, String, Text
+from sqlalchemy import JSON, BigInteger, Boolean, DateTime, Float, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -16,12 +16,18 @@ if TYPE_CHECKING:
     from app.models.clip import Clip
 
 
+class JobKind(str, Enum):
+    ai_clipper = "ai_clipper"
+    segmenter = "segmenter"
+
+
 class JobState(str, Enum):
     queued = "queued"
     inspecting = "inspecting"
     transcribing = "transcribing"
     selecting_clips = "selecting_clips"
     tracking_speakers = "tracking_speakers"
+    segmenting = "segmenting"
     rendering = "rendering"
     completed = "completed"
     failed = "failed"
@@ -46,6 +52,7 @@ ACTIVE_JOB_STATES = frozenset(
         JobState.transcribing,
         JobState.selecting_clips,
         JobState.tracking_speakers,
+        JobState.segmenting,
         JobState.rendering,
     }
 )
@@ -63,6 +70,9 @@ class Job(Base):
     content_type: Mapped[str | None] = mapped_column(String(255), nullable=True)
     size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
 
+    kind: Mapped[str] = mapped_column(
+        String(32), nullable=False, default=JobKind.ai_clipper.value
+    )
     state: Mapped[str] = mapped_column(
         String(32), nullable=False, default=JobState.queued.value
     )
@@ -95,6 +105,12 @@ class Job(Base):
         Boolean, nullable=False, default=True
     )
 
+    segment_spec: Mapped[str | None] = mapped_column(Text, nullable=True)
+    segment_output_frame: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    segment_options: Mapped[dict[str, Any]] = mapped_column(
+        JSON, nullable=False, default=dict
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now
     )
@@ -111,6 +127,13 @@ class Job(Base):
     @property
     def state_enum(self) -> JobState:
         return JobState(self.state)
+
+    @property
+    def kind_enum(self) -> JobKind:
+        try:
+            return JobKind(self.kind)
+        except Exception:
+            return JobKind.ai_clipper
 
     @property
     def has_transcript(self) -> bool:

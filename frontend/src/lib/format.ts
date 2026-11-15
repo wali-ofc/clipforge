@@ -65,6 +65,7 @@ const STATE_LABELS: Record<JobState, string> = {
   transcribing: "Transcribing audio",
   selecting_clips: "Selecting moments",
   tracking_speakers: "Tracking speakers",
+  segmenting: "Cutting segments",
   rendering: "Rendering clips",
   completed: "Completed",
   failed: "Failed",

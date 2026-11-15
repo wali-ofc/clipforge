@@ -3,7 +3,10 @@
 Phase 1 validates the uploaded source. Phase 2 extracts audio and produces
 a timestamped transcript in the job's work directory. Phase 3 asks a local
 Ollama model for candidate moments, validates and refines them, and stores
-clip proposals. Later phases will continue from those proposals.
+clip proposals. Later phases continue from those proposals.
+
+Segmenter jobs use a separate path: inspect/validate timestamps, then cut
+and optionally join requested ranges into downloadable clips.
 """
 
 from __future__ import annotations
@@ -19,7 +22,7 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.models.clip import Clip
-from app.models.job import Job, JobState
+from app.models.job import Job, JobKind, JobState
 from app.schemas.transcript import Transcript
 from app.services.clip_selection import (
     ClipCandidate,
@@ -122,6 +125,30 @@ def process_job(
 
     try:
         _check_cancelled(session, job, cancel_token)
+
+        if getattr(job, "kind", JobKind.ai_clipper.value) == JobKind.segmenter.value:
+            from app.services.segmenter import SegmentSpecError, process_segmenter_job
+
+            apply_progress(
+                job, 10, "Validating timestamps and preparing segments", JobState.inspecting
+            )
+            session.commit()
+            try:
+                process_segmenter_job(
+                    session,
+                    job,
+                    settings,
+                    cancel_check=(cancel_token.should_cancel if cancel_token else None),
+                )
+            except SegmentSpecError as exc:
+                raise ValueError(str(exc)) from exc
+            _cleanup_temp_files(settings, job_id)
+            seg_work = job_work_dir(settings, job_id) / "segment_parts"
+            if seg_work.exists():
+                shutil.rmtree(seg_work, ignore_errors=True)
+            logger.info("Segmenter job %s completed with %d clip(s)", job_id, job.clip_count)
+            return
+
         source_path = resolve_stored_path(settings, job.stored_path)
         info = probe_media(source_path, settings)
         _check_cancelled(session, job, cancel_token)
@@ -275,6 +302,10 @@ def process_job(
     except ClipSelectionError as exc:
         _mark_failed(session, job_id, exc.message, stage="Clip selection failed")
         logger.warning("Job %s failed clip selection: %s", job_id, exc.message)
+    except ValueError as exc:
+        msg = str(exc) or "Invalid segment specification."
+        _mark_failed(session, job_id, msg, stage="Segmenting failed")
+        logger.warning("Job %s segment validation failed: %s", job_id, msg)
     except Exception as exc:  # noqa: BLE001 - worker must not crash on one job
         logger.exception("Unexpected error while processing job %s", job_id)
         _mark_failed(

@@ -3,7 +3,6 @@ import {
   FileVideoIcon,
   ShieldIcon,
 } from "@/components/icons";
-import { SiteFooter, SiteHeader } from "@/components/SiteHeader";
 import { UploadForm } from "@/components/UploadForm";
 
 const features = [
@@ -31,19 +30,29 @@ const pipeline = [
   "Track & render",
 ];
 
-export default function HomePage() {
+export default function AIClipperPage() {
   return (
-    <div className="relative flex min-h-screen flex-col">
-      <SiteHeader />
+    <div className="flex min-h-full flex-col">
+      <header className="border-b border-line bg-paper-50/70 px-5 py-4 sm:px-8">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-teal-700">
+          AI Clipper
+        </p>
+        <h1 className="mt-1 text-lg font-semibold tracking-[-0.02em] text-ink-900 sm:text-xl">
+          Turn long videos into short, shareable clips
+        </h1>
+        <p className="mt-1 max-w-2xl text-xs leading-5 text-ink-500">
+          Upload a recording and let the local pipeline transcribe, pick strong moments, and render 9:16 clips.
+        </p>
+      </header>
 
-      <main className="mx-auto w-full max-w-6xl flex-1 px-5 pb-14 sm:px-8">
-        <section className="grid gap-10 pb-10 pt-6 lg:grid-cols-[1.03fr_0.97fr] lg:items-start lg:gap-14 lg:pb-16 lg:pt-12">
-          <div className="lg:pt-7">
-            <h1 className="text-balance text-[2.7rem] font-semibold leading-[1.02] tracking-[-0.045em] text-ink-900 sm:text-6xl">
+      <main className="mx-auto w-full max-w-6xl flex-1 px-5 pb-14 pt-6 sm:px-8">
+        <section className="grid gap-10 pb-10 lg:grid-cols-[1.03fr_0.97fr] lg:items-start lg:gap-14 lg:pb-16">
+          <div className="lg:pt-4">
+            <h2 className="text-balance text-[2.2rem] font-semibold leading-[1.05] tracking-[-0.04em] text-ink-900 sm:text-5xl">
               Long videos in.
               <br />
               <span className="text-teal-600">Sharp clips out.</span>
-            </h1>
+            </h2>
 
             <p className="mt-5 max-w-lg text-[15px] leading-7 text-ink-700">
               A local-first pipeline for turning long recordings into short
@@ -51,7 +60,7 @@ export default function HomePage() {
               fees.
             </p>
             <p className="mt-3 max-w-lg text-sm leading-6 text-ink-500">
-              This build validates your upload, transcribes the audio locally
+              This tool validates your upload, transcribes the audio locally
               with Whisper, asks a local Ollama model for self-contained
               moments, then tracks the likely speaker and renders each clip as
               a 9:16 portrait MP4. Preview and download the results in the
@@ -104,8 +113,6 @@ export default function HomePage() {
           </div>
         </section>
       </main>
-
-      <SiteFooter />
     </div>
   );
 }

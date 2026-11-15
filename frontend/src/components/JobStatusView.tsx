@@ -155,18 +155,29 @@ function fallbackNote(clip: Clip): string | null {
   }
 }
 
-function ClipCard({ clip, index }: { clip: Clip; index: number }) {
-  const score = clip.score == null ? null : Math.round(clip.score);
+function ClipCard({
+  clip,
+  index,
+  jobKind,
+}: {
+  clip: Clip;
+  index: number;
+  jobKind: "ai_clipper" | "segmenter";
+}) {
+  const isSegmenter = jobKind === "segmenter";
+  const score = !isSegmenter && clip.score == null ? null : clip.score == null ? null : Math.round(clip.score);
   const confidence =
-    clip.speaker_tracking_confidence == null
+    !isSegmenter && clip.speaker_tracking_confidence == null
       ? null
-      : Math.round(clip.speaker_tracking_confidence * 100);
+      : clip.speaker_tracking_confidence == null
+        ? null
+        : Math.round(clip.speaker_tracking_confidence * 100);
   const cropSamples = clip.crop_plan?.samples?.length ?? 0;
   const isRendered =
     clip.render_status === "completed" && Boolean(clip.output_filename);
   const isRendering = clip.render_status === "rendering";
   const isFailed = clip.render_status === "failed";
-  const note = fallbackNote(clip);
+  const note = isSegmenter ? null : fallbackNote(clip);
   const tone =
     score == null
       ? "border-line bg-paper-100 text-ink-500"
@@ -175,10 +186,31 @@ function ClipCard({ clip, index }: { clip: Clip; index: number }) {
         : score >= 55
           ? "border-teal-200 bg-teal-50 text-teal-700"
           : "border-amber-200 bg-amber-50 text-amber-800";
+  const parts = (clip.component_scores as any)?.parts as
+    | { start: number; end: number }[]
+    | undefined;
+  const joined = Boolean((clip.component_scores as any)?.joined);
+  const outputFrame = ((clip.component_scores as any)?.output_frame ||
+    (clip.tracking_details as any)?.output_frame ||
+    "") as string;
+  const aspectClass =
+    isSegmenter && outputFrame === "original" && clip.width && clip.height
+      ? ""
+      : "aspect-[9/16]";
+  const previewStyle =
+    isSegmenter && outputFrame === "original" && clip.width && clip.height
+      ? ({ aspectRatio: `${clip.width} / ${clip.height}` } as const)
+      : undefined;
 
   return (
     <article className="flex flex-col rounded-2xl border border-line bg-paper-50 p-4 transition hover:border-line-strong sm:p-5">
-      <div className="relative mx-auto aspect-[9/16] w-full max-w-[220px] overflow-hidden rounded-xl border border-line bg-ink-900">
+      <div
+        className={[
+          "relative mx-auto w-full max-w-[260px] overflow-hidden rounded-xl border border-line bg-ink-900",
+          aspectClass,
+        ].join(" ")}
+        style={previewStyle}
+      >
         {isRendered ? (
           <video
             src={getClipFileUrl(clip.id)}
@@ -189,21 +221,21 @@ function ClipCard({ clip, index }: { clip: Clip; index: number }) {
             className="h-full w-full object-contain"
           />
         ) : isRendering ? (
-          <div className="flex h-full flex-col items-center justify-center gap-2.5 p-4 text-center">
+          <div className="flex h-full min-h-[180px] flex-col items-center justify-center gap-2.5 p-4 text-center">
             <SpinnerIcon className="h-6 w-6 animate-spin text-teal-300" />
             <p className="text-xs font-medium text-teal-100">
-              Rendering 9:16 MP4…
+              Rendering MP4…
             </p>
           </div>
         ) : isFailed ? (
-          <div className="flex h-full flex-col items-center justify-center gap-2 p-4 text-center text-red-300">
+          <div className="flex h-full min-h-[180px] flex-col items-center justify-center gap-2 p-4 text-center text-red-300">
             <AlertIcon className="h-6 w-6 text-red-300" />
             <p className="text-[11px] font-medium leading-tight">
               Rendering failed
             </p>
           </div>
         ) : (
-          <div className="flex h-full flex-col items-center justify-center gap-2 p-4 text-center text-paper-300">
+          <div className="flex h-full min-h-[180px] flex-col items-center justify-center gap-2 p-4 text-center text-paper-300">
             <FileVideoIcon className="h-6 w-6" />
             <p className="text-[11px]">Render pending</p>
           </div>
@@ -213,31 +245,50 @@ function ClipCard({ clip, index }: { clip: Clip; index: number }) {
       <div className="mt-4 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-500">
-            Clip {String(index + 1).padStart(2, "0")}
+            {isSegmenter ? `Segment ${String(index + 1).padStart(2, "0")}` : `Clip ${String(index + 1).padStart(2, "0")}`}
           </p>
           <h3 className="mt-1.5 text-sm font-semibold leading-5 text-ink-900">
             {clip.title}
           </h3>
         </div>
-        <span
-          className={[
-            "shrink-0 rounded-lg border px-2.5 py-1 font-mono text-[11px] font-semibold",
-            tone,
-          ].join(" ")}
-          title="Heuristic clip potential, not a virality prediction"
-        >
-          {score == null ? "—" : score}
-          <span className="ml-0.5 text-[9px] font-normal opacity-70">/100</span>
-        </span>
+        {!isSegmenter ? (
+          <span
+            className={[
+              "shrink-0 rounded-lg border px-2.5 py-1 font-mono text-[11px] font-semibold",
+              tone,
+            ].join(" ")}
+            title="Heuristic clip potential, not a virality prediction"
+          >
+            {score == null ? "—" : score}
+            <span className="ml-0.5 text-[9px] font-normal opacity-70">/100</span>
+          </span>
+        ) : (
+          <span className="shrink-0 rounded-lg border border-teal-200 bg-teal-50 px-2.5 py-1 font-mono text-[10px] font-semibold text-teal-700">
+            {joined ? "JOINED" : "CUT"}
+          </span>
+        )}
       </div>
 
-      {clip.hook ? (
+      {!isSegmenter && clip.hook ? (
         <p className="mt-2.5 text-xs leading-5 text-ink-700">{clip.hook}</p>
       ) : null}
       {clip.reason ? (
         <p className="mt-1.5 text-[11px] leading-5 text-ink-500">
           {clip.reason}
         </p>
+      ) : null}
+
+      {isSegmenter && joined && parts && parts.length > 1 ? (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {parts.map((p, i) => (
+            <span
+              key={i}
+              className="rounded-md border border-line bg-white px-1.5 py-0.5 font-mono text-[10px] text-ink-600"
+            >
+              {formatDuration(p.start)}–{formatDuration(p.end)}
+            </span>
+          ))}
+        </div>
       ) : null}
 
       <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px] text-ink-500">
@@ -260,26 +311,41 @@ function ClipCard({ clip, index }: { clip: Clip; index: number }) {
         ) : null}
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1.5 border-t border-line pt-2.5">
-        <span
-          className={[
-            "rounded-md border px-1.5 py-0.5 font-mono text-[10px]",
-            trackingTone(clip),
-          ].join(" ")}
-        >
-          {trackingLabel(clip)}
-        </span>
-        {confidence != null ? (
-          <span className="font-mono text-[10px] text-ink-500">
-            {confidence}% speaker confidence
+      {!isSegmenter ? (
+        <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1.5 border-t border-line pt-2.5">
+          <span
+            className={[
+              "rounded-md border px-1.5 py-0.5 font-mono text-[10px]",
+              trackingTone(clip),
+            ].join(" ")}
+          >
+            {trackingLabel(clip)}
           </span>
-        ) : null}
-        {cropSamples > 0 ? (
-          <span className="font-mono text-[10px] text-ink-500">
-            {cropSamples} crop samples
+          {confidence != null ? (
+            <span className="font-mono text-[10px] text-ink-500">
+              {confidence}% speaker confidence
+            </span>
+          ) : null}
+          {cropSamples > 0 ? (
+            <span className="font-mono text-[10px] text-ink-500">
+              {cropSamples} crop samples
+            </span>
+          ) : null}
+        </div>
+      ) : (
+        <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1.5 border-t border-line pt-2.5">
+          <span className="rounded-md border border-line bg-white px-1.5 py-0.5 font-mono text-[10px] text-ink-600">
+            {outputFrame === "portrait_9_16" ? "9:16 portrait" : "Original frame"}
           </span>
-        ) : null}
-      </div>
+          {joined ? (
+            <span className="font-mono text-[10px] text-ink-500">
+              {parts?.length ?? 0} parts joined
+            </span>
+          ) : (
+            <span className="font-mono text-[10px] text-ink-500">Single cut</span>
+          )}
+        </div>
+      )}
 
       {note ? (
         <p className="mt-2 flex items-start gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-[10px] leading-4 text-amber-800">
@@ -549,12 +615,12 @@ export function JobStatusView({ jobId }: { jobId: string }) {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Link
-          href="/"
+          href={job?.kind === "segmenter" ? "/segmenter" : "/"}
           className="inline-flex items-center gap-2 text-xs font-medium text-ink-500 transition hover:text-ink-700"
         >
-          <span aria-hidden="true">←</span> Upload another video
+          <span aria-hidden="true">←</span>{" "}
+          {job?.kind === "segmenter" ? "Back to Segmenter" : "Back to AI Clipper"}
         </Link>
-        
       </div>
 
       {!job && !error ? <Skeleton /> : null}
@@ -723,7 +789,7 @@ export function JobStatusView({ jobId }: { jobId: string }) {
                   <p className="mt-1 text-sm leading-6 text-ink-500">
                     Processing stopped before completion and temporary work
                     files were cleaned up. Delete the job to remove its upload
-                    and any clips that were already rendered.
+                    and any {job.kind === "segmenter" ? "segments" : "clips"} that were already rendered.
                   </p>
                 </div>
               </div>
@@ -736,18 +802,26 @@ export function JobStatusView({ jobId }: { jobId: string }) {
                 <CheckIcon className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
                 <div>
                   <h2 className="text-sm font-semibold text-emerald-800">
-                    {job.has_speech === false
-                      ? "No useful speech found"
-                      : job.clip_count > 0
-                        ? "Clips rendered & ready to download"
-                        : "No candidate clips found"}
+                    {job.kind === "segmenter"
+                      ? job.clip_count > 0
+                        ? "Segments ready to download"
+                        : "No segments produced"
+                      : job.has_speech === false
+                        ? "No useful speech found"
+                        : job.clip_count > 0
+                          ? "Clips rendered & ready to download"
+                          : "No candidate clips found"}
                   </h2>
                   <p className="mt-1 text-sm leading-6 text-emerald-700">
-                    {job.has_speech === false
-                      ? "The audio was processed but produced no usable speech segments. No clips were selected; crop planning and rendering were skipped."
-                      : job.clip_count > 0
-                        ? `${job.clip_count} short clip${job.clip_count === 1 ? "" : "s"} extracted and rendered in 9:16 portrait ${job.speaker_tracking_enabled ? "with speaker-aware framing" : "with a centered crop"}. Preview each clip and download the MP4 below.`
-                        : "The transcript was processed, but no self-contained moment fit the configured duration range. Try a longer recording or adjust the clip limits."}
+                    {job.kind === "segmenter"
+                      ? job.clip_count > 0
+                        ? `${job.clip_count} segment${job.clip_count === 1 ? "" : "s"} rendered from your timestamps (${job.segment_output_frame === "portrait_9_16" ? "9:16 portrait" : "original frame"}). Preview and download each clip below.`
+                        : "Segmenting finished, but no downloadable outputs were produced. Check your timestamps and try again."
+                      : job.has_speech === false
+                        ? "The audio was processed but produced no usable speech segments. No clips were selected; crop planning and rendering were skipped."
+                        : job.clip_count > 0
+                          ? `${job.clip_count} short clip${job.clip_count === 1 ? "" : "s"} extracted and rendered in 9:16 portrait ${job.speaker_tracking_enabled ? "with speaker-aware framing" : "with a centered crop"}. Preview each clip and download the MP4 below.`
+                          : "The transcript was processed, but no self-contained moment fit the configured duration range. Try a longer recording or adjust the clip limits."}
                   </p>
                 </div>
               </div>
@@ -758,10 +832,12 @@ export function JobStatusView({ jobId }: { jobId: string }) {
             <section className="rounded-2xl border border-line bg-white p-5 sm:p-6">
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-ink-500">
-                  Rendered clips
+                  {job.kind === "segmenter" ? "Segments" : "Rendered clips"}
                 </h2>
                 <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-400">
-                  {job.clip_selection_model ?? "local model"} · heuristic score
+                  {job.kind === "segmenter"
+                    ? `${job.segment_output_frame === "portrait_9_16" ? "9:16 portrait" : "original frame"} · by timestamp`
+                    : `${job.clip_selection_model ?? "local model"} · heuristic score`}
                 </span>
               </div>
 
@@ -770,28 +846,29 @@ export function JobStatusView({ jobId }: { jobId: string }) {
                   {clipsError}
                 </p>
               ) : clips.length === 0 ? (
-                <p className="text-xs text-ink-500">Loading clip candidates…</p>
+                <p className="text-xs text-ink-500">Loading clips…</p>
               ) : (
                 <div className="grid gap-4 sm:grid-cols-2">
                   {clips.map((clip, index) => (
-                    <ClipCard key={clip.id} clip={clip} index={index} />
+                    <ClipCard
+                      key={clip.id}
+                      clip={clip}
+                      index={index}
+                      jobKind={(job.kind as "ai_clipper" | "segmenter") ?? "ai_clipper"}
+                    />
                   ))}
                 </div>
               )}
 
               <p className="mt-4 text-[11px] leading-5 text-ink-500">
-                Clips are H.264 video with AAC audio in 9:16 portrait at the
-                configured resolution. Clip potential is a deterministic
-                weighted score from hook, clarity, payoff, interest, and
-                conciseness — not a virality prediction. Speaker tracking is
-                optional per upload; when it is off, or when confidence is low
-                or a face is missing, the clip uses an explicit centered/stable
-                fallback and the card says so.
+                {job.kind === "segmenter"
+                  ? "Each output is an H.264/AAC MP4 rendered from your requested timestamps. Joined groups combine multiple ranges into a single downloadable clip in the order provided."
+                  : "Clips are H.264 video with AAC audio in 9:16 portrait at the configured resolution. Clip potential is a deterministic weighted score from hook, clarity, payoff, interest, and conciseness — not a virality prediction. Speaker tracking is optional per upload; when it is off, or when confidence is low or a face is missing, the clip uses an explicit centered/stable fallback and the card says so."}
               </p>
             </section>
           ) : null}
 
-          {job.has_transcript ? (
+          {job.kind !== "segmenter" && job.has_transcript ? (
             <section className="rounded-2xl border border-line bg-white p-5 sm:p-6">
               <div className="mb-4 flex items-center justify-between gap-3">
                 <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-ink-500">

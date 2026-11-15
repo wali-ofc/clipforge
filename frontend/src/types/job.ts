@@ -1,9 +1,12 @@
+export type JobKind = "ai_clipper" | "segmenter";
+
 export type JobState =
   | "queued"
   | "inspecting"
   | "transcribing"
   | "selecting_clips"
   | "tracking_speakers"
+  | "segmenting"
   | "rendering"
   | "completed"
   | "failed"
@@ -14,6 +17,7 @@ export interface Job {
   original_filename: string;
   content_type: string | null;
   size_bytes: number;
+  kind: JobKind;
   state: JobState;
   progress: number;
   stage_message: string;
@@ -34,6 +38,9 @@ export interface Job {
   clip_count: number;
   clip_selection_model: string | null;
   speaker_tracking_enabled: boolean;
+  segment_spec?: string | null;
+  segment_output_frame?: "original" | "portrait_9_16" | string | null;
+  segment_options?: Record<string, unknown>;
   created_at: string;
   updated_at: string;
   started_at: string | null;

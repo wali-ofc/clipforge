@@ -91,6 +91,10 @@ def _apply_sqlite_additive_migrations(engine: Engine) -> None:
             "clip_count": "INTEGER NOT NULL DEFAULT 0",
             "clip_selection_model": "VARCHAR(128)",
             "speaker_tracking_enabled": "BOOLEAN NOT NULL DEFAULT 1",
+            "kind": "VARCHAR(32) NOT NULL DEFAULT 'ai_clipper'",
+            "segment_spec": "TEXT",
+            "segment_output_frame": "VARCHAR(32)",
+            "segment_options": "JSON NOT NULL DEFAULT '{}'",
         },
         "clips": {
             "crop_plan": "JSON NOT NULL DEFAULT '{}'",

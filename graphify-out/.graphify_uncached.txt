@@ -1,0 +1,6 @@
+D:\py\clipforge\AGENTS.md
+D:\py\clipforge\README.md
+D:\py\clipforge\RUNNING.md
+D:\py\clipforge\backend\app\prompts\clip_selection.txt
+D:\py\clipforge\backend\requirements.lock.txt
+D:\py\clipforge\frontend\AGENTS.md

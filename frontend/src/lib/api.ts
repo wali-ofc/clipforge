@@ -240,7 +240,65 @@ export function uploadVideo(
 
     const form = new FormData();
     form.append("file", file);
+    form.append("kind", "ai_clipper");
     form.append("speaker_tracking", speakerTracking ? "true" : "false");
+    request.send(form);
+  });
+}
+
+export function createSegmenterJob(
+  file: File,
+  segmentSpec: string,
+  outputFrame: "original" | "portrait_9_16",
+  options?: {
+    onProgress?: (percent: number) => void;
+  },
+): Promise<Job> {
+  const onProgress = options?.onProgress;
+
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("POST", `${API_BASE_URL}/api/jobs`);
+    request.responseType = "text";
+
+    request.upload.onprogress = (event) => {
+      if (!event.lengthComputable || !onProgress) {
+        return;
+      }
+      onProgress(Math.min(100, Math.round((event.loaded / event.total) * 100)));
+    };
+
+    request.onerror = () => reject(networkError());
+    request.onabort = () =>
+      reject(new ApiError("The upload was cancelled.", undefined, "aborted"));
+
+    request.onload = () => {
+      let body: unknown = null;
+      try {
+        body = request.responseText ? JSON.parse(request.responseText) : null;
+      } catch {
+        body = null;
+      }
+
+      if (request.status >= 200 && request.status < 300) {
+        resolve(body as Job);
+        return;
+      }
+
+      reject(
+        errorFromResponse(
+          request.status,
+          body,
+          "The segmenter request failed. Check timestamps and try again.",
+        ),
+      );
+    };
+
+    const form = new FormData();
+    form.append("file", file);
+    form.append("kind", "segmenter");
+    form.append("segment_spec", segmentSpec);
+    form.append("segment_output_frame", outputFrame);
     request.send(form);
   });
 }

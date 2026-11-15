@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
-from app.models.job import JobState
+from app.models.job import JobKind, JobState
 
 
 class JobRead(BaseModel):
@@ -17,6 +18,7 @@ class JobRead(BaseModel):
     content_type: str | None = None
     size_bytes: int
 
+    kind: JobKind = JobKind.ai_clipper
     state: JobState
     progress: int = Field(ge=0, le=100)
     stage_message: str
@@ -40,6 +42,10 @@ class JobRead(BaseModel):
     clip_count: int = 0
     clip_selection_model: str | None = None
     speaker_tracking_enabled: bool = True
+
+    segment_spec: str | None = None
+    segment_output_frame: str | None = None
+    segment_options: dict[str, Any] = Field(default_factory=dict)
 
     created_at: datetime
     updated_at: datetime
