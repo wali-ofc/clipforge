@@ -48,10 +48,10 @@
     "semantic_hash": "5ae5281edb785b49f878ccf9e5939596"
   },
   "backend/app/config.py": {
-    "mtime": 1794486025.294865,
-    "seen": 1794724787.2495728,
-    "ast_hash": "6889507763bd11ca36fd857c0a47bcce",
-    "semantic_hash": "6889507763bd11ca36fd857c0a47bcce"
+    "mtime": 1794725126.6779318,
+    "seen": 1794725309.9178188,
+    "ast_hash": "ff8369b0ea87bf1be419ae824c2b3e44",
+    "semantic_hash": ""
   },
   "backend/app/db.py": {
     "mtime": 1794721390.1794326,
@@ -162,16 +162,16 @@
     "semantic_hash": "799afd6b4d61fcbc5e39ca608c0b2b7e"
   },
   "backend/app/services/rendering.py": {
-    "mtime": 1794485975.553282,
-    "seen": 1794724787.249637,
-    "ast_hash": "1af834cff5e17a5e97cf2fd71ba0811a",
-    "semantic_hash": "1af834cff5e17a5e97cf2fd71ba0811a"
+    "mtime": 1794725126.6779318,
+    "seen": 1794725309.9179537,
+    "ast_hash": "56e882d7f8209a41f4c7f052165ebca0",
+    "semantic_hash": ""
   },
   "backend/app/services/segmenter.py": {
-    "mtime": 1794721809.4831123,
-    "seen": 1794724787.2496397,
-    "ast_hash": "8c00d1229f484db7aa25000ae811d184",
-    "semantic_hash": "8c00d1229f484db7aa25000ae811d184"
+    "mtime": 1794725126.7299309,
+    "seen": 1794725309.9179575,
+    "ast_hash": "63ee0b98c5202e50137160e8836fa223",
+    "semantic_hash": ""
   },
   "backend/app/services/speaker_tracking.py": {
     "mtime": 1794312240.744457,
@@ -472,5 +472,11 @@
     "seen": 1794724787.2497914,
     "ast_hash": "c98dbebb744eadc1acc4b9f58bfe0f42",
     "semantic_hash": "c98dbebb744eadc1acc4b9f58bfe0f42"
+  },
+  "frontend/package-lock.json": {
+    "mtime": 1794491406.6719427,
+    "seen": 1794725309.9181576,
+    "ast_hash": "cfabbafecf54b57a81ec589618efbc29",
+    "semantic_hash": ""
   }
 }
