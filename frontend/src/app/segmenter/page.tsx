@@ -1,61 +1,91 @@
-import { ScissorsIcon } from "@/components/icons";
+import { RegMarks, ScissorsIcon } from "@/components/icons";
 import { SegmenterForm } from "@/components/SegmenterForm";
+
+const specimens = [
+  {
+    label: "Separate clips",
+    body: "One range per line becomes its own downloadable clip.",
+    value: "1:23 - 2:23\n5:23 - 6:32",
+  },
+  {
+    label: "Joined clip",
+    body: "Comma-separated ranges in one line are cut and stitched in order.",
+    value: "1:23 - 2:23, 5:23 - 6:32",
+  },
+];
 
 export default function SegmenterPage() {
   return (
     <div className="flex min-h-full flex-col">
-      <header className="border-b border-line bg-paper-50/70 px-5 py-4 sm:px-8">
-        <p className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-teal-700">
-          <ScissorsIcon className="h-3.5 w-3.5" />
-          Segmenter
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line bg-paper-0 px-5 py-3 sm:px-8">
+        <p className="mono text-[10px] uppercase tracking-[0.16em] text-ink-500">
+          ClipForge / Local video workshop
         </p>
-        <h1 className="mt-1 text-lg font-semibold tracking-[-0.02em] text-ink-900 sm:text-xl">
-          Cut and join clips by timestamp
-        </h1>
-        <p className="mt-1 max-w-2xl text-xs leading-5 text-ink-500">
-          Upload a video, provide time ranges, and download each segment as its own clip — or join comma-separated ranges into a single clip.
-        </p>
-      </header>
+        <div className="hidden items-center gap-4 sm:flex">
+          <span className="mono text-[10px] uppercase tracking-[0.16em] text-ink-400">
+            Tool 02 — Segmenter
+          </span>
+          <span className="tally tally--live text-ink-600">Local</span>
+        </div>
+      </div>
 
-      <main className="mx-auto w-full max-w-6xl flex-1 px-5 pb-14 pt-6 sm:px-8">
-        <section className="grid gap-10 lg:grid-cols-[1fr_1.05fr] lg:items-start lg:gap-14">
-          <div className="lg:pt-2">
-            <h2 className="text-balance text-[2rem] font-semibold leading-[1.08] tracking-[-0.035em] text-ink-900 sm:text-4xl">
+      <main className="mx-auto w-full max-w-[1180px] flex-1 px-5 pb-12 pt-8 sm:px-8 sm:pt-12">
+        <section className="grid gap-10 lg:grid-cols-[1.02fr_0.98fr] lg:items-start lg:gap-16">
+          <div className="lg:pt-3">
+            <h1 className="display-sm">
               Precise cuts.
               <br />
-              <span className="text-teal-600">No AI guessing.</span>
-            </h2>
-            <p className="mt-4 max-w-lg text-[15px] leading-7 text-ink-700">
-              Segmenter trims exactly the ranges you specify. Use it to extract highlights, remove sections, or stitch multiple moments together.
+              <span className="signal">No AI guessing.</span>
+            </h1>
+
+            <p className="lede mt-6">
+              Segmenter trims exactly the ranges you specify. Extract highlights,
+              remove sections, or stitch several moments into a single clip —
+              all on this machine.
             </p>
 
-            <div className="mt-6 space-y-3">
-              <div className="rounded-xl border border-line bg-white p-4">
-                <p className="text-xs font-semibold text-ink-900">Separate clips</p>
-                <p className="mt-1 text-[11px] leading-5 text-ink-500">
-                  Put each range on a new line to get individual downloadable clips.
-                </p>
-                <pre className="mt-2 overflow-x-auto rounded-lg border border-line bg-paper-50 px-3 py-2 font-mono text-[11px] leading-5 text-ink-700">{`1:23 - 2:23
-5:23 - 6:32`}</pre>
-              </div>
-              <div className="rounded-xl border border-line bg-white p-4">
-                <p className="text-xs font-semibold text-ink-900">Join into one clip</p>
-                <p className="mt-1 text-[11px] leading-5 text-ink-500">
-                  Use commas in the same line/group to cut those parts and join them into a single clip.
-                </p>
-                <pre className="mt-2 overflow-x-auto rounded-lg border border-line bg-paper-50 px-3 py-2 font-mono text-[11px] leading-5 text-ink-700">{`1:23 - 2:23, 5:23 - 6:32`}</pre>
-              </div>
-              <div className="rounded-xl border border-teal-100 bg-teal-50/60 p-4">
-                <p className="text-xs font-semibold text-teal-800">Frame toggle</p>
-                <p className="mt-1 text-[11px] leading-5 text-teal-700">
-                  Keep the original framing, or switch to a centered 9:16 portrait crop for vertical outputs.
-                </p>
-              </div>
+            <div className="mt-9 border-t border-line">
+              {specimens.map((specimen, index) => (
+                <div
+                  key={specimen.label}
+                  className="border-b border-line py-4"
+                >
+                  <div className="flex items-baseline justify-between gap-4">
+                    <h2 className="text-[13px] font-bold tracking-[-0.02em] text-ink-900">
+                      {specimen.label}
+                    </h2>
+                    <span className="data text-ink-400">
+                      0{index + 1}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs leading-5 text-ink-500">
+                    {specimen.body}
+                  </p>
+                  <pre className="mt-3 overflow-x-auto border-l-2 border-accent-500 bg-paper-200/60 px-3 py-2 font-mono text-[11px] leading-5 text-ink-800">
+{specimen.value}
+                  </pre>
+                </div>
+              ))}
             </div>
+
+            <p className="note mt-5 flex items-start gap-2">
+              <ScissorsIcon className="mt-0.5 h-4 w-4 shrink-0 text-accent-500" />
+              <span>
+                Choose the original frame or a centred 9:16 portrait crop for
+                each job. Output is always an H.264/AAC MP4.
+              </span>
+            </p>
           </div>
 
-          <div>
-            <SegmenterForm />
+          <div className="sheet relative">
+            <RegMarks />
+            <div className="sheet-head">
+              <span className="meta">Source / 02</span>
+              <span className="badge badge-accent">Drop a video</span>
+            </div>
+            <div className="sheet-body">
+              <SegmenterForm />
+            </div>
           </div>
         </section>
       </main>

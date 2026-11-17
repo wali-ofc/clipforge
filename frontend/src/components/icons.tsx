@@ -1,4 +1,4 @@
-import type { SVGProps } from "react";
+import type { CSSProperties, SVGProps } from "react";
 
 type IconProps = SVGProps<SVGSVGElement>;
 
@@ -10,26 +10,34 @@ export function LogoMark({ className = "h-9 w-9" }: { className?: string }) {
       fill="none"
       aria-hidden="true"
     >
-      <rect width="40" height="40" rx="11" fill="#0F6B62" />
-      <rect
-        x="1"
-        y="1"
-        width="38"
-        height="38"
-        rx="10"
-        stroke="white"
-        strokeOpacity="0.2"
-        strokeWidth="1.5"
-      />
-      <path d="M16.2 12.6 29 19.4c.9.5.9 1.7 0 2.2l-12.8 6.8c-.9.5-2-.2-2-1.2V13.8c0-1 1.1-1.7 2-1.2Z" fill="#FFFDF8" />
+      <rect width="40" height="40" rx="3" fill="#16150F" />
+      <path d="M16.2 12.6 29 19.4c.9.5.9 1.7 0 2.2l-12.8 6.8c-.9.5-2-.2-2-1.2V13.8c0-1 1.1-1.7 2-1.2Z" fill="#FBFAF6" />
+      <rect x="8" y="9" width="3" height="22" fill="#B8412A" />
       <path
-        d="M11.5 10.5h3.2M11.5 15.2h2.4"
-        stroke="#FFFDF8"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        opacity=".65"
+        d="M16 28.5h14"
+        stroke="#FBFAF6"
+        strokeOpacity="0.4"
+        strokeWidth="1"
       />
     </svg>
+  );
+}
+
+/** Four hairline crop marks used as the system's signature registration detail. */
+export function RegMarks({ inset = "6px" }: { inset?: string }) {
+  const style = (edge: "tl" | "tr" | "bl" | "br"): CSSProperties => ({
+    top: edge.startsWith("t") ? inset : undefined,
+    bottom: edge.startsWith("b") ? inset : undefined,
+    left: edge.endsWith("l") ? inset : undefined,
+    right: edge.endsWith("r") ? inset : undefined,
+  });
+  return (
+    <span aria-hidden="true" className="pointer-events-none absolute inset-0 z-[2]">
+      <span className="reg reg-tl" style={style("tl")} />
+      <span className="reg reg-tr" style={style("tr")} />
+      <span className="reg reg-bl" style={style("bl")} />
+      <span className="reg reg-br" style={style("br")} />
+    </span>
   );
 }
 
@@ -81,6 +89,20 @@ export function ArrowRightIcon(props: IconProps) {
     <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" {...props}>
       <path
         d="M5 12h14m0 0-5.25-5.25M19 12l-5.25 5.25"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+export function ArrowLeftIcon(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" {...props}>
+      <path
+        d="M19 12H5m0 0 5.25-5.25M5 12l5.25 5.25"
         stroke="currentColor"
         strokeWidth="1.7"
         strokeLinecap="round"

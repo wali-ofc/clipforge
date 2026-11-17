@@ -16,6 +16,7 @@ import {
   ArrowRightIcon,
   CheckIcon,
   FileVideoIcon,
+  RegMarks,
   ScissorsIcon,
   SpinnerIcon,
   UploadCloudIcon,
@@ -70,7 +71,12 @@ export function SegmenterForm() {
       setHealth(result);
       setHealthError(null);
     } catch (requestError) {
-      if (requestError instanceof DOMException && requestError.name === "AbortError") return;
+      if (
+        requestError instanceof DOMException &&
+        requestError.name === "AbortError"
+      ) {
+        return;
+      }
       setHealth(null);
       setHealthError(
         requestError instanceof Error
@@ -159,11 +165,11 @@ export function SegmenterForm() {
       });
       router.push(`/jobs/${job.id}`);
     } catch (submitError) {
-      const message =
+      setError(
         submitError instanceof ApiError
           ? submitError.message
-          : "The segmenter request failed unexpectedly. Check timestamps and try again.";
-      setError(message);
+          : "The segmenter request failed unexpectedly. Check timestamps and try again.",
+      );
       setIsUploading(false);
     }
   }
@@ -176,265 +182,265 @@ export function SegmenterForm() {
   ].join(",");
 
   return (
-    <div className="rounded-2xl border border-line bg-white p-4 shadow-[0_1px_2px_rgba(23,33,30,0.04),0_18px_48px_-28px_rgba(23,33,30,0.28)] sm:p-5">
-      <form onSubmit={handleSubmit} noValidate className="space-y-4">
-        <div
-          role="button"
-          tabIndex={isUploading ? -1 : 0}
-          aria-label="Choose a video to segment"
-          aria-disabled={isUploading}
-          onClick={() => !isUploading && inputRef.current?.click()}
-          onKeyDown={(event) => {
-            if (!isUploading && (event.key === "Enter" || event.key === " ")) {
-              event.preventDefault();
-              inputRef.current?.click();
-            }
-          }}
-          onDragOver={(event) => {
+    <form onSubmit={handleSubmit} noValidate className="space-y-5">
+      <div
+        role="button"
+        tabIndex={isUploading ? -1 : 0}
+        aria-label="Choose a video to segment"
+        aria-disabled={isUploading}
+        onClick={() => !isUploading && inputRef.current?.click()}
+        onKeyDown={(event) => {
+          if (!isUploading && (event.key === "Enter" || event.key === " ")) {
             event.preventDefault();
-            if (!isUploading) setIsDragging(true);
-          }}
-          onDragLeave={(event) => {
-            event.preventDefault();
-            setIsDragging(false);
-          }}
-          onDrop={handleDrop}
-          className={[
-            "group relative cursor-pointer overflow-hidden rounded-2xl border border-dashed px-5 py-8 text-center transition duration-200 sm:px-8",
-            isDragging
-              ? "border-teal-500 bg-teal-50"
-              : "border-line-strong bg-paper-50 hover:border-teal-300 hover:bg-paper-100",
-            isUploading ? "cursor-default opacity-80" : "",
-          ].join(" ")}
-        >
-          <input
-            ref={inputRef}
-            type="file"
-            accept={acceptedTypes}
-            className="hidden"
-            onChange={handleInputChange}
-            disabled={isUploading}
-          />
+            inputRef.current?.click();
+          }
+        }}
+        onDragOver={(event) => {
+          event.preventDefault();
+          if (!isUploading) setIsDragging(true);
+        }}
+        onDragLeave={(event) => {
+          event.preventDefault();
+          setIsDragging(false);
+        }}
+        onDrop={handleDrop}
+        data-dragging={isDragging}
+        data-disabled={isUploading}
+        className="dropzone flex min-h-[150px] flex-col items-center justify-center px-6 py-7 text-center"
+      >
+        <RegMarks />
+        <input
+          ref={inputRef}
+          type="file"
+          accept={acceptedTypes}
+          className="hidden"
+          onChange={handleInputChange}
+          disabled={isUploading}
+        />
 
-          {file ? (
-            <div className="mx-auto flex max-w-md flex-col items-center">
-              <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl border border-teal-200 bg-teal-50 text-teal-600">
-                <FileVideoIcon className="h-7 w-7" />
-                <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 text-emerald-600">
-                  <CheckIcon className="h-3 w-3" />
-                </span>
-              </div>
-              <p className="mt-4 max-w-full truncate text-sm font-medium text-ink-900">
-                {file.name}
-              </p>
-              <p className="mt-1 text-xs text-ink-500">
-                {formatBytes(file.size)} · ready to segment
-              </p>
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  clearFile();
-                }}
-                disabled={isUploading}
-                className="mt-4 inline-flex items-center gap-1.5 rounded-full border border-line bg-paper-100 px-3 py-1.5 text-[11px] font-medium text-ink-500 transition hover:border-line-strong hover:text-ink-900 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <XIcon className="h-3 w-3" />
-                Choose another
-              </button>
+        {file ? (
+          <div className="flex max-w-full flex-col items-center">
+            <div className="relative flex h-10 w-10 items-center justify-center border border-accent-200 bg-accent-50 text-accent-500">
+              <FileVideoIcon className="h-5 w-5" />
+              <span className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center border border-ok-200 bg-ok-50 text-ok-700">
+                <CheckIcon className="h-3 w-3" />
+              </span>
             </div>
-          ) : (
-            <div className="mx-auto flex max-w-sm flex-col items-center">
-              <div
-                className={[
-                  "flex h-14 w-14 items-center justify-center rounded-2xl border text-teal-600 transition duration-200",
-                  isDragging
-                    ? "scale-105 border-teal-500 bg-teal-100"
-                    : "border-line bg-paper-100 group-hover:border-teal-300 group-hover:bg-teal-50",
-                ].join(" ")}
-              >
-                <UploadCloudIcon className="h-7 w-7" />
-              </div>
-              <p className="mt-4 text-sm font-medium text-ink-900">
-                {isDragging ? "Drop your video here" : "Drag a video here"}
-              </p>
-              <p className="mt-1.5 text-xs leading-5 text-ink-500">
-                or upload a file from your device
-              </p>
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  if (!isUploading) {
-                    inputRef.current?.click();
-                  }
-                }}
-                disabled={isUploading}
-                className="mt-4 inline-flex items-center gap-2 rounded-xl border border-teal-200 bg-white px-4 py-2 text-xs font-semibold text-teal-700 shadow-sm transition hover:border-teal-300 hover:bg-teal-50 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <UploadCloudIcon className="h-4 w-4" />
-                Upload from device
-              </button>
-              <p className="mt-4 text-[11px] text-ink-400">
-                {formats.join(" · ")} · up to {formatBytes(maxUpload)}
-              </p>
-            </div>
-          )}
-        </div>
-
-        <div className="rounded-xl border border-line bg-paper-50 p-4">
-          <div className="mb-2 flex items-center justify-between gap-3">
-            <label
-              htmlFor="segment-spec"
-              className="flex items-center gap-2 text-sm font-medium text-ink-900"
+            <p className="mt-3 max-w-full truncate text-[14px] font-bold tracking-[-0.02em] text-ink-900">
+              {file.name}
+            </p>
+            <p className="mono mt-1 text-[10px] text-ink-500">
+              {formatBytes(file.size)} · ready to segment
+            </p>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                clearFile();
+              }}
+              disabled={isUploading}
+              className="btn btn-quiet mt-2 border border-line-strong"
             >
-              <ScissorsIcon className="h-4 w-4 text-teal-600" />
-              Timestamps
-            </label>
-            <span className="text-[10px] text-ink-400">
-              MM:SS or HH:MM:SS
+              <XIcon className="h-3.5 w-3.5" />
+              Choose another
+            </button>
+          </div>
+        ) : (
+          <div className="flex max-w-sm flex-col items-center">
+            <div
+              className={[
+                "flex h-10 w-10 items-center justify-center border transition-colors duration-200",
+                isDragging
+                  ? "border-accent-500 bg-accent-50 text-accent-500"
+                  : "border-line-strong bg-paper-0 text-ink-600",
+              ].join(" ")}
+            >
+              <UploadCloudIcon className="h-5 w-5" />
+            </div>
+            <p className="mt-3 text-[14px] font-bold tracking-[-0.02em] text-ink-900">
+              {isDragging ? "Drop the video here" : "Drop a video here"}
+            </p>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                if (!isUploading) inputRef.current?.click();
+              }}
+              disabled={isUploading}
+              className="btn btn-quiet mt-2 border border-line-strong"
+            >
+              Choose file
+            </button>
+            <p className="mono mt-3 text-[10px] uppercase tracking-[0.1em] text-ink-400">
+              {formats.join("  ·  ")}  ·  up to {formatBytes(maxUpload)}
+            </p>
+          </div>
+        )}
+      </div>
+
+      <div>
+        <div className="mb-2 flex items-baseline justify-between gap-3">
+          <label
+            htmlFor="segment-spec"
+            className="flex items-center gap-2 text-[13px] font-bold tracking-[-0.02em] text-ink-900"
+          >
+            <ScissorsIcon className="h-4 w-4 text-accent-500" />
+            Timestamps
+          </label>
+          <span className="mono text-[10px] uppercase tracking-[0.1em] text-ink-400">
+            MM:SS or HH:MM:SS
+          </span>
+        </div>
+        <textarea
+          id="segment-spec"
+          value={spec}
+          onChange={(e) => setSpec(e.target.value)}
+          disabled={isUploading}
+          rows={5}
+          spellCheck={false}
+          placeholder={"1:23 - 2:23\n5:23 - 6:32\n\nOr join ranges into one clip:\n1:23 - 2:23, 5:23 - 6:32"}
+          className="field font-mono text-[12px] leading-6"
+        />
+        <div className="ruler mt-2 h-1.5" aria-hidden="true" />
+        <p className="mono mt-2 text-[10px] leading-5 text-ink-500">
+          New line = separate clip · commas in a line = one joined clip
+        </p>
+      </div>
+
+      <fieldset>
+        <legend className="text-[13px] font-bold tracking-[-0.02em] text-ink-900">
+          Output frame
+        </legend>
+        <p className="note mt-1 text-[11px]">
+          Keep the source framing or centre-crop to vertical 9:16.
+        </p>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          <label
+            className="option"
+            data-selected={frame === "original"}
+          >
+            <input
+              type="radio"
+              name="segment-frame"
+              value="original"
+              checked={frame === "original"}
+              onChange={() => setFrame("original")}
+              disabled={isUploading}
+              className="check mt-0.5"
+            />
+            <span className="block min-w-0">
+              <span className="block text-[13px] font-bold tracking-[-0.02em] text-ink-900">
+                Keep original
+              </span>
+              <span className="mt-0.5 block text-[11px] leading-4 text-ink-500">
+                Preserve source resolution and aspect ratio.
+              </span>
             </span>
-          </div>
-          <textarea
-            id="segment-spec"
-            value={spec}
-            onChange={(e) => setSpec(e.target.value)}
-            disabled={isUploading}
-            rows={5}
-            placeholder={"1:23 - 2:23\n5:23 - 6:32\n\nOr join ranges into one clip:\n1:23 - 2:23, 5:23 - 6:32"}
-            className="w-full resize-y rounded-lg border border-line bg-white px-3 py-2.5 font-mono text-xs leading-5 text-ink-900 placeholder:text-ink-400 focus:border-teal-400 focus:outline-none focus:ring-1 focus:ring-teal-400 disabled:cursor-not-allowed disabled:opacity-60"
-          />
-          <div className="mt-2 space-y-1 text-[11px] leading-5 text-ink-500">
-            <p>
-              <span className="font-medium text-ink-700">New line</span> = separate output clip.
-              {" "}
-              <span className="font-medium text-ink-700">Commas in a line/group</span> = cut and join those ranges into one clip.
-            </p>
-            <p className="text-ink-400">
-              Example: <span className="font-mono">1:23-2:23, 5:23-6:32</span> → one joined clip with both parts.
-            </p>
-          </div>
-        </div>
-
-        <div className="rounded-xl border border-line bg-paper-50 p-4">
-          <p className="text-sm font-medium text-ink-900">Output frame</p>
-          <p className="mt-0.5 text-[11px] leading-5 text-ink-500">
-            Choose whether to keep the original framing or produce a centered 9:16 portrait crop.
-          </p>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2">
-            <label
-              className={[
-                "flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition",
-                frame === "original"
-                  ? "border-teal-300 bg-teal-50"
-                  : "border-line bg-white hover:border-line-strong",
-              ].join(" ")}
-            >
-              <input
-                type="radio"
-                name="segment-frame"
-                value="original"
-                checked={frame === "original"}
-                onChange={() => setFrame("original")}
-                disabled={isUploading}
-                className="mt-0.5 text-teal-600 focus:ring-teal-500"
-              />
-              <span>
-                <span className="block text-sm font-medium text-ink-900">Keep original</span>
-                <span className="mt-0.5 block text-[11px] leading-5 text-ink-500">
-                  Preserve source resolution and aspect ratio.
-                </span>
+          </label>
+          <label
+            className="option"
+            data-selected={frame === "portrait_9_16"}
+          >
+            <input
+              type="radio"
+              name="segment-frame"
+              value="portrait_9_16"
+              checked={frame === "portrait_9_16"}
+              onChange={() => setFrame("portrait_9_16")}
+              disabled={isUploading}
+              className="check mt-0.5"
+            />
+            <span className="block min-w-0">
+              <span className="block text-[13px] font-bold tracking-[-0.02em] text-ink-900">
+                9:16 portrait
               </span>
-            </label>
-            <label
-              className={[
-                "flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition",
-                frame === "portrait_9_16"
-                  ? "border-teal-300 bg-teal-50"
-                  : "border-line bg-white hover:border-line-strong",
-              ].join(" ")}
-            >
-              <input
-                type="radio"
-                name="segment-frame"
-                value="portrait_9_16"
-                checked={frame === "portrait_9_16"}
-                onChange={() => setFrame("portrait_9_16")}
-                disabled={isUploading}
-                className="mt-0.5 text-teal-600 focus:ring-teal-500"
-              />
-              <span>
-                <span className="block text-sm font-medium text-ink-900">9:16 portrait</span>
-                <span className="mt-0.5 block text-[11px] leading-5 text-ink-500">
-                  Center-crop and output a vertical 9:16 frame.
-                </span>
+              <span className="mt-0.5 block text-[11px] leading-4 text-ink-500">
+                Centre-crop into a vertical frame.
               </span>
-            </label>
-          </div>
+            </span>
+          </label>
         </div>
+      </fieldset>
 
-        {healthError ? (
-          <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            <p>{healthError}</p>
-            <button type="button" onClick={() => void loadHealth()} className="mt-2 font-medium text-red-800 underline decoration-red-300/40 underline-offset-4 hover:decoration-red-600">
+      {healthError ? (
+        <div role="alert" className="notice notice-bad">
+          <AlertIcon className="mt-0.5 h-4 w-4 shrink-0" />
+          <div className="min-w-0">
+            <p className="text-[13px] font-semibold text-bad-700">
+              Backend unreachable
+            </p>
+            <p className="mt-0.5 text-xs leading-5 text-bad-700">{healthError}</p>
+            <button
+              type="button"
+              onClick={() => void loadHealth()}
+              className="btn btn-quiet mt-1 text-bad-700 underline underline-offset-4"
+            >
               Retry connection
             </button>
           </div>
-        ) : null}
-
-        {problem ? (
-          <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            {problem}
-          </div>
-        ) : null}
-
-        {error ? (
-          <div role="alert" className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            <AlertIcon className="mt-0.5 h-4 w-4 shrink-0" />
-            <span>{error}</span>
-          </div>
-        ) : null}
-
-        {isUploading ? (
-          <div aria-live="polite">
-            <div className="mb-2 flex items-center justify-between text-xs">
-              <span className="flex items-center gap-2 text-ink-500">
-                <SpinnerIcon className="h-3.5 w-3.5 animate-spin text-teal-600" />
-                {progress >= 100 ? "Upload complete — queuing" : "Uploading video"}
-              </span>
-              <span className="font-mono text-[11px] text-ink-500">{progress}%</span>
-            </div>
-            <div className="h-1.5 overflow-hidden rounded-full bg-paper-200">
-              <div className="h-full rounded-full bg-teal-500 transition-[width] duration-200" style={{ width: `${Math.max(progress, 2)}%` }} />
-            </div>
-          </div>
-        ) : null}
-
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="max-w-[22rem] text-[11px] leading-5 text-ink-400">
-            {checkingHealth
-              ? "Checking the local backend…"
-              : "Each line/group becomes one output. Comma-separated ranges in a group are joined into a single clip."}
-          </p>
-          <button
-            type="submit"
-            disabled={!canSubmit}
-            className="group inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-teal-500 px-5 text-sm font-semibold text-white shadow-[0_8px_20px_-10px_rgba(15,107,98,0.45)] transition hover:bg-teal-600 active:translate-y-px disabled:cursor-not-allowed disabled:bg-paper-300 disabled:text-ink-500 disabled:shadow-none"
-          >
-            {isUploading ? (
-              <>
-                <SpinnerIcon className="h-4 w-4 animate-spin" />
-                Uploading
-              </>
-            ) : (
-              <>
-                Create segments
-                <ArrowRightIcon className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5" />
-              </>
-            )}
-          </button>
         </div>
-      </form>
-    </div>
+      ) : null}
+
+      {problem ? (
+        <div role="alert" className="notice notice-warn">
+          <AlertIcon className="mt-0.5 h-4 w-4 shrink-0" />
+          <p className="text-xs leading-5 text-warn-700">{problem}</p>
+        </div>
+      ) : null}
+
+      {error ? (
+        <div role="alert" className="notice notice-bad">
+          <AlertIcon className="mt-0.5 h-4 w-4 shrink-0" />
+          <p className="text-xs leading-5 text-bad-700">{error}</p>
+        </div>
+      ) : null}
+
+      {isUploading ? (
+        <div aria-live="polite">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <span className="flex items-center gap-2 text-xs text-ink-600">
+              <SpinnerIcon className="h-3.5 w-3.5 animate-spin text-accent-500" />
+              {progress >= 100 ? "Upload complete — queuing" : "Uploading video"}
+            </span>
+            <span className="timecode">{progress}%</span>
+          </div>
+          <div className="ruler">
+            <div
+              className="ruler-fill"
+              style={{ width: `${Math.max(progress, 2)}%` }}
+            />
+            <div
+              className="ruler-head"
+              style={{ left: `${Math.max(progress, 2)}%` }}
+            />
+          </div>
+        </div>
+      ) : null}
+
+      <div className="flex flex-col gap-4 border-t border-line pt-5 sm:flex-row sm:items-center sm:justify-between">
+        <p className="note max-w-[22rem] text-[11px]">
+          {checkingHealth
+            ? "Checking the local backend…"
+            : "Each line becomes one output. Comma-separated ranges in a group are joined into a single clip."}
+        </p>
+        <button
+          type="submit"
+          disabled={!canSubmit}
+          className="btn btn-primary w-full sm:w-auto"
+        >
+          {isUploading ? (
+            <>
+              <SpinnerIcon className="h-4 w-4 animate-spin" />
+              Uploading
+            </>
+          ) : (
+            <>
+              Create segments
+              <ArrowRightIcon className="h-4 w-4" />
+            </>
+          )}
+        </button>
+      </div>
+    </form>
   );
 }

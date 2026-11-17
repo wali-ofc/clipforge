@@ -1,117 +1,127 @@
-import {
-  CpuIcon,
-  FileVideoIcon,
-  ShieldIcon,
-} from "@/components/icons";
+import { RegMarks } from "@/components/icons";
 import { UploadForm } from "@/components/UploadForm";
 
-const features = [
+const steps = [
   {
-    icon: ShieldIcon,
-    title: "Local by default",
-    body: "Uploads and generated media stay on this machine.",
+    title: "Inspect",
+    body: "The file is probed on disk before anything runs.",
   },
   {
-    icon: CpuIcon,
-    title: "CPU-first",
-    body: "Small models and one job at a time on 16 GB machines.",
+    title: "Transcribe",
+    body: "Whisper finds words and timestamps locally.",
   },
   {
-    icon: FileVideoIcon,
-    title: "Portrait output",
-    body: "9:16 clips with speaker-aware framing, previewable and downloadable.",
+    title: "Select",
+    body: "A local model proposes self-contained moments.",
   },
-];
-
-const pipeline = [
-  "Upload",
-  "Transcribe",
-  "Select moments",
-  "Track & render",
+  {
+    title: "Render",
+    body: "Speaker-aware crops become verified 9:16 MP4s.",
+  },
 ];
 
 export default function AIClipperPage() {
   return (
     <div className="flex min-h-full flex-col">
-      <header className="border-b border-line bg-paper-50/70 px-5 py-4 sm:px-8">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-teal-700">
-          AI Clipper
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line bg-paper-0 px-5 py-3 sm:px-8">
+        <p className="mono text-[10px] uppercase tracking-[0.16em] text-ink-500">
+          ClipForge / Local video workshop
         </p>
-        <h1 className="mt-1 text-lg font-semibold tracking-[-0.02em] text-ink-900 sm:text-xl">
-          Turn long videos into short, shareable clips
-        </h1>
-        <p className="mt-1 max-w-2xl text-xs leading-5 text-ink-500">
-          Upload a recording and let the local pipeline transcribe, pick strong moments, and render 9:16 clips.
-        </p>
-      </header>
+        <div className="hidden items-center gap-4 sm:flex">
+          <span className="mono text-[10px] uppercase tracking-[0.16em] text-ink-400">
+            Tool 01 — AI Clipper
+          </span>
+          <span className="tally tally--live text-ink-600">Local</span>
+        </div>
+      </div>
 
-      <main className="mx-auto w-full max-w-6xl flex-1 px-5 pb-14 pt-6 sm:px-8">
-        <section className="grid gap-10 pb-10 lg:grid-cols-[1.03fr_0.97fr] lg:items-start lg:gap-14 lg:pb-16">
-          <div className="lg:pt-4">
-            <h2 className="text-balance text-[2.2rem] font-semibold leading-[1.05] tracking-[-0.04em] text-ink-900 sm:text-5xl">
-              Long videos in.
+      <main className="mx-auto w-full max-w-[1180px] flex-1 px-5 pb-12 pt-8 sm:px-8 sm:pt-12">
+        <section className="grid gap-10 lg:grid-cols-[1.02fr_0.98fr] lg:items-start lg:gap-16">
+          <div className="lg:pt-3">
+            <h1 className="display">
+              Long video in.
               <br />
-              <span className="text-teal-600">Sharp clips out.</span>
-            </h2>
+              <span className="signal">Short clips out.</span>
+            </h1>
 
-            <p className="mt-5 max-w-lg text-[15px] leading-7 text-ink-700">
-              A local-first pipeline for turning long recordings into short
-              vertical moments. No cloud processing, no accounts, no per-minute
-              fees.
+            <p className="lede mt-7">
+              A local-first pipeline that turns a long video into short vertical
+              moments. No cloud processing, no accounts, and no per-minute fees —
+              every stage runs on this machine.
             </p>
-            <p className="mt-3 max-w-lg text-sm leading-6 text-ink-500">
-              This tool validates your upload, transcribes the audio locally
-              with Whisper, asks a local Ollama model for self-contained
-              moments, then tracks the likely speaker and renders each clip as
-              a 9:16 portrait MP4. Preview and download the results in the
-              browser.
+            <p className="note mt-4">
+              Upload a recording, review the job as it moves through each stage,
+              then preview and download the finished clips from the browser.
             </p>
 
-            <dl className="mt-8 grid divide-y divide-line overflow-hidden rounded-2xl border border-line bg-white sm:grid-cols-3 sm:divide-x sm:divide-y-0">
-              {features.map((feature) => (
-                <div key={feature.title} className="p-4">
-                  <dt className="flex items-center gap-2 text-xs font-semibold text-ink-900">
-                    <feature.icon className="h-4 w-4 text-teal-600" />
-                    {feature.title}
-                  </dt>
-                  <dd className="mt-2 text-[11px] leading-5 text-ink-500">
-                    {feature.body}
-                  </dd>
-                </div>
-              ))}
-            </dl>
-          </div>
-
-          <div>
-            <UploadForm />
-          </div>
-        </section>
-
-        <section className="rounded-2xl border border-line bg-white px-4 py-4 sm:px-5">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-ink-400">
-                Pipeline
-              </p>
-              <p className="mt-1 text-xs text-ink-500">
-                Each phase is tested before the next one starts.
-              </p>
+            <div className="mt-9 grid grid-cols-1 border-y border-line sm:grid-cols-3">
+              <div className="border-b border-line py-3 sm:border-b-0 sm:border-r sm:pr-3">
+                <p className="mono text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-900">
+                  Local only
+                </p>
+                <p className="mt-1 text-[11px] leading-4 text-ink-500">
+                  Files never leave this machine
+                </p>
+              </div>
+              <div className="border-b border-line py-3 sm:border-b-0 sm:border-r sm:pl-3 sm:pr-3">
+                <p className="mono text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-900">
+                  CPU-first
+                </p>
+                <p className="mt-1 text-[11px] leading-4 text-ink-500">
+                  Small models, one job at a time
+                </p>
+              </div>
+              <div className="py-3 sm:pl-3">
+                <p className="mono text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-900">
+                  9:16 output
+                </p>
+                <p className="mt-1 text-[11px] leading-4 text-ink-500">
+                  Portrait MP4, previewable
+                </p>
+              </div>
             </div>
-            <ol className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:gap-1.5">
-              {pipeline.map((step, index) => (
+
+            <ol className="mt-8">
+              {steps.map((step, index) => (
                 <li
-                  key={step}
-                  className="flex items-center gap-2 rounded-lg border border-line bg-paper-50 px-2.5 py-2 text-[11px]"
+                  key={step.title}
+                  className="flex gap-4 border-b border-line py-3 last:border-b-0"
                 >
-                  <span className="flex h-4 w-4 items-center justify-center rounded-full bg-teal-50 text-[9px] font-semibold text-teal-700">
-                    {index + 1}
+                  <span className="data w-6 shrink-0 pt-0.5 text-accent-500">
+                    {String(index + 1).padStart(2, "0")}
                   </span>
-                  <span className="font-medium text-ink-800">{step}</span>
+                  <span className="min-w-0">
+                    <span className="block text-[13px] font-bold tracking-[-0.02em] text-ink-900">
+                      {step.title}
+                    </span>
+                    <span className="mt-0.5 block text-xs leading-5 text-ink-500">
+                      {step.body}
+                    </span>
+                  </span>
                 </li>
               ))}
             </ol>
           </div>
+
+          <div className="sheet relative">
+            <RegMarks />
+            <div className="sheet-head">
+              <span className="meta">Source / 01</span>
+              <span className="badge badge-accent">Drop a video</span>
+            </div>
+            <div className="sheet-body">
+              <UploadForm />
+            </div>
+          </div>
         </section>
+
+        <div className="mt-10 flex flex-wrap items-center gap-x-8 gap-y-2 border-t border-line pt-5 mono text-[10px] uppercase tracking-[0.12em] text-ink-500">
+          <span>Input · .mp4 / .mov / .mkv</span>
+          <span aria-hidden="true" className="text-line-strong">/</span>
+          <span>Output · 1080×1920 H.264 + AAC</span>
+          <span aria-hidden="true" className="text-line-strong">/</span>
+          <span>Chain · whisper → ollama → opencv → ffmpeg</span>
+        </div>
       </main>
     </div>
   );

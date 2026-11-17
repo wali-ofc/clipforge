@@ -23,14 +23,14 @@ const navItems: NavItem[] = [
   {
     href: "/",
     label: "AI Clipper",
-    description: "Auto-find and render short clips",
+    description: "Find and render short clips",
     icon: ClapperIcon,
     match: (path) => path === "/" || path.startsWith("/jobs"),
   },
   {
     href: "/segmenter",
     label: "Segmenter",
-    description: "Cut or join clips by timestamps",
+    description: "Cut and join by timestamp",
     icon: ScissorsIcon,
     match: (path) => path.startsWith("/segmenter"),
   },
@@ -45,7 +45,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       const saved = window.localStorage.getItem("clipforge.sidebarCollapsed");
       if (saved === "1") setCollapsed(true);
     } catch {
-      // ignore
+      // storage is optional
     }
   }, []);
 
@@ -58,44 +58,78 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           next ? "1" : "0",
         );
       } catch {
-        // ignore
+        // storage is optional
       }
       return next;
     });
   }
 
   return (
-    <div className="flex min-h-screen bg-paper-100 text-ink-900">
+    <div className="flex min-h-screen flex-col">
+      {/* Compact top navigation for tablet and phone widths. */}
+      <div className="flex w-full shrink-0 flex-col border-b border-line bg-paper-0 lg:hidden">
+        <div className="flex items-center justify-between gap-3 px-5 py-3">
+          <Link href="/" className="flex items-center gap-2.5" aria-label="ClipForge home">
+            <LogoMark className="h-8 w-8" />
+            <span className="text-[14px] font-extrabold tracking-[-0.04em] text-ink-900">
+              CLIPFORGE
+            </span>
+          </Link>
+          <span className="tally tally--live text-ink-600">Local</span>
+        </div>
+        <nav className="flex border-t border-line" aria-label="Tools (compact)">
+          {navItems.map((item) => {
+            const active = item.match(pathname);
+            const Icon = item.icon;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                aria-current={active ? "page" : undefined}
+                className={[
+                  "flex flex-1 items-center justify-center gap-2 border-r border-line py-2.5 text-[12px] font-bold tracking-[-0.02em] last:border-r-0",
+                  active ? "bg-accent-50 text-accent-700" : "text-ink-600",
+                ].join(" ")}
+              >
+                <Icon className="h-4 w-4" />
+                {item.label}
+              </Link>
+            );
+          })}
+        </nav>
+      </div>
+
+      <div className="flex min-h-0 flex-1">
       <aside
         className={[
-          "sticky top-0 flex h-screen shrink-0 flex-col border-r border-line bg-paper-50/95 backdrop-blur-sm transition-[width] duration-200",
-          collapsed ? "w-[72px]" : "w-[248px]",
+          "sticky top-0 hidden h-screen shrink-0 flex-col border-r border-line bg-paper-0 transition-[width] duration-200 ease-out lg:flex",
+          collapsed ? "w-[68px]" : "w-[246px]",
         ].join(" ")}
       >
         <div
           className={[
-            "flex h-16 items-center border-b border-line",
-            collapsed ? "justify-center px-2" : "justify-between px-3",
+            "flex h-[74px] shrink-0 items-center border-b border-line",
+            collapsed ? "justify-center px-2" : "justify-between gap-2 px-3",
           ].join(" ")}
         >
-          <Link href="/" className="flex items-center gap-2.5 overflow-hidden rounded-lg">
-            <LogoMark className="h-9 w-9 shrink-0" />
+          <Link href="/" className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden" aria-label="ClipForge home">
+            <LogoMark className="h-8 w-8 shrink-0" />
             {!collapsed ? (
-              <div className="min-w-0 leading-none">
-                <div className="truncate text-[15px] font-semibold tracking-[-0.02em] text-ink-900">
-                  ClipForge
-                </div>
-                <div className="mt-1 truncate text-[9px] font-medium uppercase tracking-[0.18em] text-ink-500">
-                  Local tools
-                </div>
-              </div>
+              <span className="block min-w-0 leading-none">
+                <span className="block truncate text-[14px] font-extrabold tracking-[-0.04em] text-ink-900">
+                  CLIPFORGE
+                </span>
+                <span className="mono mt-1 block truncate text-[8px] font-medium uppercase tracking-[0.14em] text-ink-500">
+                  Local video workshop
+                </span>
+              </span>
             ) : null}
           </Link>
           {!collapsed ? (
             <button
               type="button"
               onClick={toggle}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-line bg-white text-ink-500 transition hover:border-line-strong hover:text-ink-800"
+              className="btn btn-quiet h-8 w-8 shrink-0 border border-line-strong"
               title="Collapse sidebar"
               aria-label="Collapse sidebar"
             >
@@ -105,11 +139,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
 
         {collapsed ? (
-          <div className="flex justify-center border-b border-line py-2">
+          <div className="flex shrink-0 justify-center border-b border-line py-2">
             <button
               type="button"
               onClick={toggle}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-line bg-white text-ink-500 transition hover:border-line-strong hover:text-ink-800"
+              className="btn btn-quiet h-8 w-8 border border-line-strong"
               title="Expand sidebar"
               aria-label="Expand sidebar"
             >
@@ -118,11 +152,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         ) : null}
 
-        <nav className="flex-1 space-y-1 p-2">
+        <nav className="flex-1 overflow-y-auto py-3" aria-label="Tools">
           {!collapsed ? (
-            <p className="px-2 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-ink-400">
-              Tools
-            </p>
+            <p className="meta px-4 pb-2 pt-1">Tools</p>
           ) : null}
           {navItems.map((item) => {
             const active = item.match(pathname);
@@ -132,30 +164,27 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 key={item.href}
                 href={item.href}
                 title={collapsed ? item.label : undefined}
+                aria-current={active ? "page" : undefined}
                 className={[
-                  "group flex items-center rounded-xl border transition",
-                  collapsed ? "justify-center px-0 py-2.5" : "gap-3 px-3 py-2.5",
-                  active
-                    ? "border-teal-200 bg-teal-50 text-teal-800"
-                    : "border-transparent text-ink-600 hover:border-line hover:bg-white hover:text-ink-900",
+                  "group relative flex items-center border-b border-line py-3 transition-colors duration-150",
+                  collapsed ? "justify-center px-2" : "gap-3 px-4",
+                  active ? "bg-paper-50 text-ink-900" : "text-ink-600 hover:bg-paper-50 hover:text-ink-900",
                 ].join(" ")}
               >
                 <span
+                  aria-hidden="true"
                   className={[
-                    "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border",
-                    active
-                      ? "border-teal-200 bg-white text-teal-700"
-                      : "border-line bg-paper-100 text-ink-500 group-hover:text-ink-800",
+                    "absolute inset-y-0 left-0 w-[3px]",
+                    active ? "bg-accent-500" : "bg-transparent group-hover:bg-line-strong",
                   ].join(" ")}
-                >
-                  <Icon className="h-4.5 w-4.5" />
-                </span>
+                />
+                <Icon className={["h-[18px] w-[18px] shrink-0", active ? "text-accent-500" : "text-ink-500"].join(" ")} />
                 {!collapsed ? (
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm font-medium">
+                  <span className="block min-w-0">
+                    <span className="block truncate text-[13px] font-bold tracking-[-0.02em]">
                       {item.label}
                     </span>
-                    <span className="block truncate text-[11px] text-ink-500">
+                    <span className="mono mt-0.5 block truncate text-[10px] text-ink-500">
                       {item.description}
                     </span>
                   </span>
@@ -165,26 +194,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           })}
         </nav>
 
-        <div
-          className={[
-            "border-t border-line p-2",
-            collapsed ? "flex justify-center" : "",
-          ].join(" ")}
-        >
-          <div
-            className={[
-              "flex items-center gap-2 rounded-lg border border-line bg-white px-2.5 py-2 text-[10px] font-medium text-ink-500",
-              collapsed ? "justify-center px-2" : "",
-            ].join(" ")}
-            title="Runs on this machine"
-          >
-            <span className="status-dot h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
-            {!collapsed ? <span>Runs on this machine</span> : null}
+        <div className="shrink-0 border-t border-line p-4">
+          <div className="tally tally--live">
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-ok-500" />
+            {!collapsed ? <span className="text-ink-600">Runs on this machine</span> : null}
           </div>
+          {!collapsed ? (
+            <p className="mono mt-2 text-[9px] uppercase leading-4 tracking-[0.12em] text-ink-400">
+              No cloud · No account
+            </p>
+          ) : null}
         </div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">{children}</div>
+      </div>
     </div>
   );
 }

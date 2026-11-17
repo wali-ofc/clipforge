@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-17T05:20:00Z",
+  "title": "Design System: ClipForge",
+  "extensions": {
+    "colorMeta": {
+      "signal": { "role": "primary", "displayName": "Signal Vermilion", "canonical": "#b8412a", "tonalRamp": ["#3d130c", "#6b2416", "#9c3522", "#b8412a", "#c85c3d", "#d98870", "#eab9a9", "#fbefea"] },
+      "paper-ground": { "role": "neutral", "displayName": "Paper Ground", "canonical": "#f2efe7", "tonalRamp": ["#16150f", "#3b382d", "#6b6556", "#bcb3a0", "#d9d2c4", "#eae5d9", "#f7f5ef", "#fbfaf6"] },
+      "ink": { "role": "neutral", "displayName": "Ink", "canonical": "#16150f", "tonalRamp": ["#16150f", "#24221a", "#3b382d", "#555045", "#6b6556", "#867e6b", "#bcb3a0", "#eae5d9"] },
+      "ok": { "role": "state", "displayName": "Field Green", "canonical": "#3e6b46", "tonalRamp": ["#132318", "#203a27", "#2c4f33", "#3e6b46", "#5f8c66", "#aacba6", "#d6e5d2", "#eaf1e8"] },
+      "warn": { "role": "state", "displayName": "Ochre", "canonical": "#8a6417", "tonalRamp": ["#2b1f08", "#4b360e", "#6b4d11", "#8a6417", "#a8832b", "#dec98f", "#efe2bf", "#f7f0de"] },
+      "bad": { "role": "state", "displayName": "Deep Red", "canonical": "#9a3024", "tonalRamp": ["#2a0c09", "#501811", "#772318", "#9a3024", "#b94c3c", "#e0aaa0", "#f0d2cb", "#f8e9e5"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Two-line landing statements only; expanded Archivo." },
+      "label": { "displayName": "Mono Label", "purpose": "Measurements, metadata and identifiers." }
+    },
+    "shadows": [
+      { "name": "sheet-ambient", "value": "0 1px 2px rgba(22,21,15,0.05), 0 18px 36px -28px rgba(22,21,15,0.4)", "purpose": "Primary working sheets only." }
+    ],
+    "motion": [
+      { "name": "ease-out", "value": "cubic-bezier(0.16, 1, 0.3, 1)", "purpose": "State transitions and measured progress." },
+      { "name": "tally-pulse", "value": "1.5s ease-in-out infinite", "purpose": "The single authored moment: a live-state tally." }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "lg", "value": "1024px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The single decisive action on a screen.",
+      "html": "<button class=\"ds-btn-primary\">UPLOAD &amp; INSPECT</button>",
+      "css": ".ds-btn-primary{display:inline-flex;align-items:center;justify-content:center;min-height:42px;padding:0.6rem 1.05rem;border:1px solid transparent;border-radius:2px;background:var(--color-accent-500,#b8412a);color:#fffaf6;font:700 0.8125rem/1.4 Archivo,system-ui,sans-serif;cursor:pointer;transition:background 160ms cubic-bezier(0.16,1,0.3,1),transform 120ms cubic-bezier(0.16,1,0.3,1)}.ds-btn-primary:hover{background:var(--color-accent-600,#9c3522)}.ds-btn-primary:active{transform:translateY(1px)}.ds-btn-primary:focus-visible{outline:2px solid var(--color-accent-500,#b8412a);outline-offset:2px}.ds-btn-primary:disabled{background:var(--color-paper-300,#ded7c7);color:var(--color-ink-500,#6b6556);cursor:not-allowed}"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Secondary action on a paper sheet.",
+      "html": "<button class=\"ds-btn-ghost\">CHOOSE FILE</button>",
+      "css": ".ds-btn-ghost{display:inline-flex;align-items:center;justify-content:center;min-height:42px;padding:0.6rem 1.05rem;border:1px solid var(--color-line-strong,#bcb3a0);border-radius:2px;background:var(--color-paper-0,#fbfaf6);color:var(--color-ink-900,#16150f);font:700 0.8125rem/1.4 Archivo,system-ui,sans-serif;cursor:pointer;transition:background 160ms cubic-bezier(0.16,1,0.3,1)}.ds-btn-ghost:hover{background:var(--color-paper-50,#f7f5ef);border-color:var(--color-ink-400,#867e6b)}.ds-btn-ghost:focus-visible{outline:2px solid var(--color-accent-500,#b8412a);outline-offset:2px}"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "field",
+      "description": "Workhorse input with a signal focus ring.",
+      "html": "<input class=\"ds-field\" type=\"text\" placeholder=\"1:23 - 2:23\" />",
+      "css": ".ds-field{width:100%;padding:0.7rem 0.8rem;border:1px solid var(--color-line-strong,#bcb3a0);border-radius:2px;background:var(--color-paper-0,#fbfaf6);color:var(--color-ink-900,#16150f);font:0.875rem/1.6 Roboto Mono,ui-monospace,monospace;transition:border-color 160ms,box-shadow 160ms}.ds-field::placeholder{color:var(--color-ink-400,#867e6b)}.ds-field:focus{outline:none;border-color:var(--color-accent-500,#b8412a);box-shadow:0 0 0 3px var(--color-accent-100,#f6ded5)}.ds-field:disabled{background:var(--color-paper-100,#f2efe7);color:var(--color-ink-500,#6b6556);cursor:not-allowed}"
+    },
+    {
+      "name": "Status Badge",
+      "kind": "chip",
+      "refersTo": "badge",
+      "description": "Monospace state, score and tracking labels.",
+      "html": "<span class=\"ds-badge ds-badge-ok\">COMPLETED</span>",
+      "css": ".ds-badge{display:inline-flex;align-items:center;padding:0.2rem 0.45rem;border:1px solid var(--color-line,#d9d2c4);border-radius:2px;background:var(--color-paper-50,#f7f5ef);color:var(--color-ink-600,#555045);font:600 0.625rem/1.4 Roboto Mono,ui-monospace,monospace;letter-spacing:0.08em;text-transform:uppercase}.ds-badge-ok{border-color:var(--color-ok-200,#aacba6);background:var(--color-ok-50,#eaf1e8);color:var(--color-ok-700,#2c4f33)}"
+    },
+    {
+      "name": "Worksheet Sheet",
+      "kind": "card",
+      "refersTo": "sheet",
+      "description": "The primary container for a work area.",
+      "html": "<section class=\"ds-sheet\"><header class=\"ds-sheet-head\">SOURCE / 01</header><div class=\"ds-sheet-body\">Drop a video here</div></section>",
+      "css": ".ds-sheet{border:1px solid var(--color-line,#d9d2c4);border-radius:3px;background:var(--color-paper-0,#fbfaf6);box-shadow:0 1px 2px rgba(22,21,15,0.05),0 18px 36px -28px rgba(22,21,15,0.4)}.ds-sheet-head{padding:0.9rem 1.1rem;border-bottom:1px solid var(--color-line,#d9d2c4);color:var(--color-ink-500,#6b6556);font:500 0.6875rem/1.4 Roboto Mono,ui-monospace,monospace;letter-spacing:0.14em;text-transform:uppercase}.ds-sheet-body{padding:1.25rem;color:var(--color-ink-900,#16150f);font:0.9375rem/1.6 Archivo,system-ui,sans-serif}"
+    },
+    {
+      "name": "Measured Ruler",
+      "kind": "custom",
+      "refersTo": "button-primary",
+      "description": "Signature component: progress and timecode read as ticks.",
+      "html": "<div class=\"ds-ruler\" role=\"progressbar\" aria-valuenow=\"64\"><div class=\"ds-ruler-fill\" style=\"width:64%\"></div><div class=\"ds-ruler-head\" style=\"left:64%\"></div></div>",
+      "css": ".ds-ruler{position:relative;height:8px;background-color:var(--color-paper-200,#eae5d9);background-image:repeating-linear-gradient(to right,var(--color-line-strong,#bcb3a0) 0 1px,transparent 1px 10%);background-size:100% 4px;background-position:bottom left;background-repeat:repeat-x;border-top:1px solid var(--color-line-strong,#bcb3a0)}.ds-ruler-fill{position:absolute;inset:0 auto 0 0;background:var(--color-accent-500,#b8412a);transition:width 600ms cubic-bezier(0.16,1,0.3,1)}.ds-ruler-head{position:absolute;top:-4px;width:2px;height:16px;background:var(--color-ink-900,#16150f);transition:left 600ms cubic-bezier(0.16,1,0.3,1)}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Workshop Sheet",
+    "overview": "ClipForge looks like a well-run bench, not a software dashboard. The ground is warm gray paper, type is near-black and dense, hairline rules divide work into legible bands, and a single vermilion signal marks the actions and the live state. The reference world is the print shop and the editing room: registration marks, timecode, spec strips, ruled ledgers, and measured rulers. Nothing glows, nothing floats in a colored halo, and no section announces itself with a small uppercase label above a heading.",
+    "keyCharacteristics": [
+      "Paper ground, sheet surfaces, hairline rules, near-square corners",
+      "One signal color doing real jobs: action, active tool, tally, progress, fallback warning",
+      "Self-hosted Archivo for words, Roboto Mono for measurements",
+      "Ruler, registration marks, and spec rows as the recurring structural vocabulary",
+      "Desktop sidebar / mobile top nav; one coherent system across all four screens"
+    ],
+    "rules": [
+      { "name": "The One Signal Rule", "body": "Vermilion never decorates. It appears on an action, an active state, a measurement, or a warning — and nowhere else.", "section": "colors" },
+      { "name": "The Heading Carries It Rule", "body": "No eyebrow or kicker above a heading. If a heading needs a label to make sense, rewrite the heading.", "section": "typography" },
+      { "name": "The Flat-By-Default Rule", "body": "A sheet is flat until it is a primary working surface; cards inside a sheet use borders only.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do use the ruler for anything measured — progress, timecode, duration.",
+      "Do use Roboto Mono only for data, labels, and identifiers, with tabular numerals.",
+      "Do call out every tracking fallback in plain language on the clip card.",
+      "Do theme browser surfaces: selection, caret, focus ring, and scrollbars all come from the palette."
+    ],
+    "donts": [
+      "Don't use a decorative fixed-cell grid background; structure comes from rules and rulers.",
+      "Don't stack icon-plus-heading-plus-text cards as a page structure.",
+      "Don't put an eyebrow label above a heading or number sections that carry no sequence.",
+      "Don't use gradient text, glass, neon glow, or hard offset block shadows.",
+      "Don't imply cloud processing, accounts, or virality scoring anywhere in the interface."
+    ]
+  }
+}
