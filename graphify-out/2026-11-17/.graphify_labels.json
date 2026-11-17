@@ -1,12 +1,8 @@
 {
   "0": "FFmpeg Clip Rendering",
-  "3": "Transcription Segments",
-  "6": "Cancellation and Work",
   "7": "Frontend UI Components",
-  "8": "Worker Pipeline Services",
   "9": "FFmpeg Command Helpers",
   "11": "Clip Selection Schemas",
-  "12": "Transcript Chunking",
   "13": "Ollama Selection Client",
   "14": "Face Detection Core",
   "15": "Frontend Dependencies",
