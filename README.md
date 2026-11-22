@@ -26,6 +26,7 @@ Local-first AI video clipping. Long recordings go in; short vertical clips come 
 - Every rendered file is probed with ffprobe for dimensions, codecs, container, audio presence, frame rate, and duration before it is marked complete
 - Configurable output resolution (`1080×1920` default, `720×1280` supported), frame rate, CRF, preset, and render timeout
 - Minimal Next.js UI: drag/drop upload, upload progress, live job status polling, transcript summary, results cards with inline video previews, download buttons, tracking/fallback and render status, error states
+- Segmenter source projects: upload a video once, then queue any number of independent timestamp cut jobs against the same stored source, with a per-project cut history and "back to project" navigation from results
 - Metadata, transcript, clip proposals, crop plans, and rendered MP4 files exposed over the API; clips stream inline for preview or download as attachments with safe filenames
 - Cooperative job cancellation: deleting a queued or active job stops the worker at the next stage boundary, kills an in-flight FFmpeg process, cleans temporary files, and removes the job record plus all of its media
 - Startup recovery: jobs left active by a crash are marked failed, and UUID job directories with no database row are removed as orphans
@@ -56,8 +57,8 @@ clipforge/
 │   ├── pyproject.toml
 │   └── .env              # local machine overrides, gitignored
 ├── frontend/
-│   ├── src/app/          # landing page, /jobs/[id], 404
-│   ├── src/components/   # upload form, status view, icons, chrome
+│   ├── src/app/          # landing page, segmenter workspace, /jobs/[id], 404
+│   ├── src/components/   # upload form, segmenter workspace, status view, icons, chrome
 │   ├── src/lib/          # API client, formatting helpers
 │   └── .env.local.example
 ├── .env.example
@@ -244,6 +245,12 @@ The selection prompt itself is editable at `backend/app/prompts/clip_selection.t
 | `GET` | `/api/clips/{id}` | One clip's metadata, heuristic score, tracking status, and crop plan |
 | `GET` | `/api/clips/{id}/file` | Rendered portrait MP4; streams inline for preview, or `?download=true` for an attachment with a safe filename. `404 clip_not_rendered` until rendering succeeds |
 | `DELETE` | `/api/jobs/{id}` | Cancel a queued/active job, then delete the job row, clip rows, upload, work files, and rendered clips. Returns `204`; repeat or unknown IDs return `404 job_not_found` |
+| `POST` | `/api/sources` | Multipart upload (`file`); probes and stores the video once as a reusable source project. Returns `201 SourceRead` |
+| `GET` | `/api/sources` | List source projects with their cut-job counts, newest first |
+| `GET` | `/api/sources/{id}` | One source project with its cut-job count |
+| `GET` | `/api/sources/{id}/jobs` | All cut jobs created from a source, newest first |
+| `POST` | `/api/sources/{id}/segments` | Form fields `segment_spec` and `segment_output_frame`; validates timestamps against the source duration and queues an independent segmenter job. Returns `202 JobRead` with `source_id` set |
+| `DELETE` | `/api/sources/{id}` | Cancel and delete every cut job for a source, then remove its upload and all job media. Returns `204` |
 
 Errors use a consistent shape:
 
@@ -374,6 +381,12 @@ The job page is the results page. While a job runs it polls `/api/jobs/{id}` eve
 
 `FileResponse` supports HTTP range requests, so the preview can seek without downloading the whole file. `?download=true` switches `Content-Disposition` to `attachment` and uses a sanitized filename derived from the clip title. The browser never receives a filesystem path: the stored relative path is resolved and checked against `DATA_DIR` on the server.
 
+## Segmenter source projects
+
+The Segmenter tool separates the upload from the cut. `POST /api/sources` stores and probes one video as a **source project**; `POST /api/sources/{id}/segments` then queues as many independent cut jobs as needed against that same stored file. Each cut job has its own state, progress, clip rows, work directory, and rendered MP4s, and carries a `source_id` so results can link back to the project. Timestamps are validated against the source duration when the job is queued, so bad ranges fail immediately with `400 invalid_segment_spec` instead of failing in the worker.
+
+Deleting a cut job removes only that job's clips and work files — the shared upload survives. Deleting the source cancels any active cut jobs, removes all of their media, then deletes the source upload. Source upload directories are named by source UUID and are kept out of startup orphan cleanup while their source row exists.
+
 ## Cancellation and deletion
 
 There is one destructive action per job: **Cancel & delete job** while it is queued or processing, and **Delete job & media** once it is terminal. Both call `DELETE /api/jobs/{id}`. The UI asks for confirmation, disables the action while the request is in flight, and returns to the upload page on success.
@@ -494,7 +507,7 @@ npm.cmd run build
 - Clip selection quality depends on the installed local model; small models can miss moments or return malformed JSON (those windows are skipped)
 - The default `qwen2.5:3b` model must be pulled before selection works; the health check reports it as unavailable until then
 - The first transcription of a model requires internet access and enough disk space
-- One job is processed at a time; the UI uploads one file at a time
+- One job is processed at a time. AI Clipper uploads one file per job; Segmenter uploads one source per project but can queue many cut jobs from it
 - Upload is validated synchronously; very large files hold the request open until probing finishes
 - There is no automatic retention policy: finished jobs keep their upload and clips until you delete them, and only orphan directories without a database row are cleaned automatically
 - Cancellation is checked at stage boundaries and inside subprocess waits, not between every decoded frame; a stage that ignores the token finishes its current unit of work before stopping

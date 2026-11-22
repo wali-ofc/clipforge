@@ -628,6 +628,26 @@ def deduplicate_candidates(
     return sorted(kept, key=lambda item: (item.start, item.end))
 
 
+def create_clip_selector(
+    settings: Settings,
+    *,
+    client_factory: Callable[[], Any] | None = None,
+) -> ClipSelector:
+    """Build the configured selector.
+
+    ``compact`` (default) pre-scores the transcript and makes one small
+    request. ``legacy`` keeps the original window-by-window implementation so
+    the two can be compared on the same video.
+    """
+    if settings.clip_selection_mode == "legacy":
+        return OllamaClipSelector(settings, client_factory=client_factory)
+
+    # Imported lazily: compact_selection imports helpers from this module.
+    from app.services.compact_selection import CompactOllamaClipSelector
+
+    return CompactOllamaClipSelector(settings, client_factory=client_factory)
+
+
 class OllamaClipSelector:
     """Clip selection through a locally running Ollama instance."""
 

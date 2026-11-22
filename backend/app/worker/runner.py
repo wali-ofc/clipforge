@@ -29,23 +29,37 @@ logger = logging.getLogger(__name__)
 def recover_interrupted_jobs(session_factory: sessionmaker[Session]) -> int:
     """Mark jobs left mid-pipeline by a previous process as failed."""
     active_states = [state.value for state in ACTIVE_JOB_STATES]
+    values = {
+        "state": JobState.failed.value,
+        "stage_message": "Interrupted by server restart",
+        "completed_at": utc_now(),
+        "updated_at": utc_now(),
+    }
     with session_factory() as session:
-        result = session.execute(
+        source_result = session.execute(
             update(Job)
-            .where(Job.state.in_(active_states))
+            .where(Job.state.in_(active_states), Job.source_id.is_not(None))
             .values(
-                state=JobState.failed.value,
-                stage_message="Interrupted by server restart",
+                **values,
+                error=(
+                    "Processing was interrupted by a server restart. "
+                    "Reopen the source project and cut the timestamps again."
+                ),
+            )
+        )
+        standalone_result = session.execute(
+            update(Job)
+            .where(Job.state.in_(active_states), Job.source_id.is_(None))
+            .values(
+                **values,
                 error=(
                     "Processing was interrupted by a server restart. "
                     "Upload the video again to retry."
                 ),
-                completed_at=utc_now(),
-                updated_at=utc_now(),
             )
         )
         session.commit()
-        count = result.rowcount or 0
+        count = (source_result.rowcount or 0) + (standalone_result.rowcount or 0)
 
     if count:
         logger.warning("Marked %d interrupted job(s) as failed", count)

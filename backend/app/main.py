@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api import routes_clips, routes_health, routes_jobs, routes_upload
+from app.api import routes_clips, routes_health, routes_jobs, routes_sources, routes_upload
 from app.config import Settings, get_settings
 from app.db import (
     create_engine_from_settings,
@@ -133,6 +133,7 @@ def create_app(
         openapi_tags=[
             {"name": "health", "description": "Service and dependency status."},
             {"name": "jobs", "description": "Upload, queue, and inspect jobs."},
+            {"name": "sources", "description": "Reusable source projects and their cut jobs."},
         ],
     )
     app.state.settings = resolved_settings
@@ -140,7 +141,7 @@ def create_app(
     @app.middleware("http")
     async def reject_oversized_upload(request, call_next):
         """Reject clearly oversized multipart bodies before they are spooled."""
-        if request.method == "POST" and request.url.path == "/api/jobs":
+        if request.method == "POST" and request.url.path in {"/api/jobs", "/api/sources"}:
             raw_length = request.headers.get("content-length")
             if raw_length:
                 try:
@@ -174,6 +175,7 @@ def create_app(
 
     app.include_router(routes_health.router)
     app.include_router(routes_upload.router)
+    app.include_router(routes_sources.router)
     app.include_router(routes_jobs.router)
     app.include_router(routes_clips.router)
 

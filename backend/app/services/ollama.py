@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
@@ -20,6 +20,25 @@ from app.config import Settings
 logger = logging.getLogger(__name__)
 
 _PROBE_TIMEOUT_SECONDS = 5.0
+
+
+def _seconds(value: Any) -> float | None:
+    """Ollama reports durations in nanoseconds; expose seconds."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if number < 0:
+        return None
+    return round(number / 1_000_000_000.0, 3)
+
+
+def _count(value: Any) -> int | None:
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number >= 0 else None
 
 
 class OllamaError(Exception):
@@ -42,6 +61,39 @@ class OllamaProbe:
     models: tuple[str, ...] = ()
     model_available: bool | None = None
     detail: str | None = None
+
+
+@dataclass(frozen=True)
+class OllamaChatStats:
+    """Server-reported timing for one chat request, when Ollama provides it."""
+
+    prompt_eval_count: int | None = None
+    prompt_eval_seconds: float | None = None
+    eval_count: int | None = None
+    eval_seconds: float | None = None
+    total_seconds: float | None = None
+    load_seconds: float | None = None
+
+
+@dataclass(frozen=True)
+class OllamaChatResult:
+    """A parsed JSON payload plus the server's own timing counters."""
+
+    payload: dict[str, Any]
+    stats: OllamaChatStats = field(default_factory=OllamaChatStats)
+
+
+def _parse_chat_stats(body: Any) -> OllamaChatStats:
+    if not isinstance(body, dict):
+        return OllamaChatStats()
+    return OllamaChatStats(
+        prompt_eval_count=_count(body.get("prompt_eval_count")),
+        prompt_eval_seconds=_seconds(body.get("prompt_eval_duration")),
+        eval_count=_count(body.get("eval_count")),
+        eval_seconds=_seconds(body.get("eval_duration")),
+        total_seconds=_seconds(body.get("total_duration")),
+        load_seconds=_seconds(body.get("load_duration")),
+    )
 
 
 def _normalize_model_name(name: str) -> str:
@@ -189,14 +241,23 @@ class OllamaClient:
             )
         return probe
 
-    def chat_json(
+    def chat_json_result(
         self,
         *,
         system: str,
         user: str,
         schema: dict[str, Any],
-    ) -> dict[str, Any]:
-        """Run one non-streaming structured chat request and return JSON."""
+        num_predict: int | None = None,
+    ) -> OllamaChatResult:
+        """Run one structured chat request and return JSON plus timing stats."""
+        options: dict[str, Any] = {
+            "temperature": self.settings.ollama_temperature,
+            "num_ctx": self.settings.ollama_num_ctx,
+        }
+        if num_predict is not None:
+            # Bounds a runaway generation if the model ignores the schema.
+            options["num_predict"] = int(num_predict)
+
         payload: dict[str, Any] = {
             "model": self.settings.ollama_model,
             "messages": [
@@ -205,10 +266,7 @@ class OllamaClient:
             ],
             "stream": False,
             "format": schema,
-            "options": {
-                "temperature": self.settings.ollama_temperature,
-                "num_ctx": self.settings.ollama_num_ctx,
-            },
+            "options": options,
             "keep_alive": self.settings.ollama_keep_alive,
         }
         if not self.settings.ollama_think:
@@ -290,4 +348,14 @@ class OllamaClient:
                 "ollama_malformed_response",
                 "Ollama returned JSON that was not an object.",
             )
-        return parsed
+        return OllamaChatResult(payload=parsed, stats=_parse_chat_stats(body))
+
+    def chat_json(
+        self,
+        *,
+        system: str,
+        user: str,
+        schema: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Backwards-compatible wrapper that returns only the parsed JSON."""
+        return self.chat_json_result(system=system, user=user, schema=schema).payload

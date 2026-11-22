@@ -1,4 +1,4 @@
-import type { Clip, Health, Job } from "@/types/job";
+import type { Clip, Health, Job, Source } from "@/types/job";
 
 export const API_BASE_URL = (
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000"
@@ -301,6 +301,150 @@ export function createSegmenterJob(
     form.append("segment_output_frame", outputFrame);
     request.send(form);
   });
+}
+
+/* --- Source projects ---------------------------------------------------- */
+
+export async function listSources(signal?: AbortSignal): Promise<Source[]> {
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}/api/sources`, {
+      cache: "no-store",
+      signal,
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") throw error;
+    throw networkError();
+  }
+  const body = await readJson(response);
+  if (!response.ok) {
+    throw errorFromResponse(response.status, body, "Could not list source projects.");
+  }
+  return body as Source[];
+}
+
+export async function getSource(
+  sourceId: string,
+  signal?: AbortSignal,
+): Promise<Source> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${API_BASE_URL}/api/sources/${encodeURIComponent(sourceId)}`,
+      { cache: "no-store", signal },
+    );
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") throw error;
+    throw networkError();
+  }
+  const body = await readJson(response);
+  if (!response.ok) {
+    throw errorFromResponse(response.status, body, "Could not load the source project.");
+  }
+  return body as Source;
+}
+
+export async function getSourceJobs(
+  sourceId: string,
+  signal?: AbortSignal,
+): Promise<Job[]> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${API_BASE_URL}/api/sources/${encodeURIComponent(sourceId)}/jobs`,
+      { cache: "no-store", signal },
+    );
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") throw error;
+    throw networkError();
+  }
+  const body = await readJson(response);
+  if (!response.ok) {
+    throw errorFromResponse(response.status, body, "Could not load cut jobs.");
+  }
+  return body as Job[];
+}
+
+export function createSource(
+  file: File,
+  options?: { onProgress?: (percent: number) => void },
+): Promise<Source> {
+  const onProgress = options?.onProgress;
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("POST", `${API_BASE_URL}/api/sources`);
+    request.responseType = "text";
+
+    request.upload.onprogress = (event) => {
+      if (event.lengthComputable && onProgress) {
+        onProgress(Math.min(100, Math.round((event.loaded / event.total) * 100)));
+      }
+    };
+    request.onerror = () => reject(networkError());
+    request.onabort = () =>
+      reject(new ApiError("The upload was cancelled.", undefined, "aborted"));
+    request.onload = () => {
+      let body: unknown = null;
+      try {
+        body = request.responseText ? JSON.parse(request.responseText) : null;
+      } catch {
+        body = null;
+      }
+      if (request.status >= 200 && request.status < 300) {
+        resolve(body as Source);
+        return;
+      }
+      reject(errorFromResponse(request.status, body, "The upload failed."));
+    };
+
+    const form = new FormData();
+    form.append("file", file);
+    request.send(form);
+  });
+}
+
+export async function createSourceSegment(
+  sourceId: string,
+  segmentSpec: string,
+  outputFrame: "original" | "portrait_9_16",
+): Promise<Job> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${API_BASE_URL}/api/sources/${encodeURIComponent(sourceId)}/segments`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          segment_spec: segmentSpec,
+          segment_output_frame: outputFrame,
+        }),
+      },
+    );
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") throw error;
+    throw networkError();
+  }
+  const body = await readJson(response);
+  if (!response.ok) {
+    throw errorFromResponse(response.status, body, "Could not queue the cut job.");
+  }
+  return body as Job;
+}
+
+export async function deleteSource(sourceId: string): Promise<void> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${API_BASE_URL}/api/sources/${encodeURIComponent(sourceId)}`,
+      { method: "DELETE" },
+    );
+  } catch {
+    throw networkError();
+  }
+  if (response.ok) return;
+  const body = await readJson(response);
+  throw errorFromResponse(response.status, body, "Could not delete the project.");
 }
 
 /**

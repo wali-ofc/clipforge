@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import Settings
 from app.models.job import Job
+from app.models.source import Source
 from app.utils.paths import job_clips_dir, job_upload_dir, job_work_dir
 
 logger = logging.getLogger(__name__)
@@ -50,13 +51,23 @@ def job_directories(settings: Settings, job_id: str) -> tuple[Path, Path, Path]:
     )
 
 
-def delete_job_files(settings: Settings, job_id: str) -> int:
-    """Delete every managed directory for a job. Returns the count removed."""
+def delete_job_files(
+    settings: Settings, job_id: str, *, include_upload: bool = True
+) -> int:
+    """Delete managed directories for a job. Returns the count removed.
+
+    ``include_upload`` is False for jobs backed by a source project: their
+    upload directory belongs to the shared source and must survive the
+    deletion of any single cut job.
+    """
     try:
         directories = job_directories(settings, job_id)
     except ValueError:
         logger.error("Refusing to delete files for a non-UUID job id: %r", job_id)
         return 0
+
+    if not include_upload:
+        directories = directories[1:]
 
     removed = 0
     for directory in directories:
@@ -75,6 +86,23 @@ def delete_job_files(settings: Settings, job_id: str) -> int:
     return removed
 
 
+def delete_source_files(settings: Settings, source_id: str) -> int:
+    """Delete the upload directory owned by a source project."""
+    if not is_job_uuid(source_id):
+        logger.error("Refusing to delete files for a non-UUID source id: %r", source_id)
+        return 0
+    directory = _safe_child(settings.uploads_dir, source_id)
+    if not directory.exists():
+        return 0
+    try:
+        shutil.rmtree(directory)
+    except OSError as exc:
+        logger.warning("Could not remove source directory %s: %s", directory, exc)
+        return 0
+    logger.info("Deleted upload directory for source %s", source_id)
+    return 1
+
+
 def cleanup_orphan_job_dirs(
     settings: Settings,
     session_factory: sessionmaker[Session],
@@ -87,6 +115,9 @@ def cleanup_orphan_job_dirs(
     """
     with session_factory() as session:
         known_jobs = set(session.execute(select(Job.id)).scalars().all())
+        # Source upload directories are named by source UUID and must not be
+        # mistaken for orphaned job directories.
+        known_sources = set(session.execute(select(Source.id)).scalars().all())
 
     removed = 0
     for base in (settings.uploads_dir, settings.work_dir, settings.clips_dir):
@@ -96,7 +127,11 @@ def cleanup_orphan_job_dirs(
             if not entry.is_dir():
                 continue
             job_id = entry.name
-            if not is_job_uuid(job_id) or job_id in known_jobs:
+            if (
+                not is_job_uuid(job_id)
+                or job_id in known_jobs
+                or job_id in known_sources
+            ):
                 continue
             try:
                 shutil.rmtree(entry)

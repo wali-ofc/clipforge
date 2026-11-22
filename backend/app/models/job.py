@@ -6,7 +6,18 @@ from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import JSON, BigInteger, Boolean, DateTime, Float, Index, Integer, String, Text
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -14,6 +25,7 @@ from app.utils.time import utc_now
 
 if TYPE_CHECKING:
     from app.models.clip import Clip
+    from app.models.source import Source
 
 
 class JobKind(str, Enum):
@@ -62,9 +74,13 @@ class Job(Base):
     __tablename__ = "jobs"
     __table_args__ = (
         Index("ix_jobs_queue", "state", "created_at"),
+        Index("ix_jobs_source", "source_id"),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    source_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("sources.id", ondelete="SET NULL"), nullable=True
+    )
     original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
     stored_path: Mapped[str] = mapped_column(String(1024), nullable=False)
     content_type: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -123,6 +139,7 @@ class Job(Base):
     clips: Mapped[list["Clip"]] = relationship(
         back_populates="job", cascade="all, delete-orphan"
     )
+    source: Mapped["Source | None"] = relationship(back_populates="jobs")
 
     @property
     def state_enum(self) -> JobState:

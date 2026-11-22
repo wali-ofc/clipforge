@@ -445,3 +445,11 @@ If jobs still time out, switch to `qwen2.5:1.5b` or lower
 
 For the full architecture, API, configuration table, and test coverage, see
 [README.md](README.md).
+
+test result:
+Identifying promising moments	9/10
+Understanding hooks	8/10
+Ranking moments	8/10
+Choosing clip boundaries	4/10
+Following duration requirements	5/10
+Overall for this test	7/10

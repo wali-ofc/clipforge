@@ -1,5 +1,24 @@
 export type JobKind = "ai_clipper" | "segmenter";
 
+export interface Source {
+  id: string;
+  original_filename: string;
+  content_type: string | null;
+  size_bytes: number;
+  duration_seconds: number | null;
+  width: number | null;
+  height: number | null;
+  rotation: number;
+  video_codec: string | null;
+  audio_codec: string | null;
+  has_audio: boolean;
+  container_format: string | null;
+  frame_rate: number | null;
+  job_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export type JobState =
   | "queued"
   | "inspecting"
@@ -14,6 +33,7 @@ export type JobState =
 
 export interface Job {
   id: string;
+  source_id: string | null;
   original_filename: string;
   content_type: string | null;
   size_bytes: number;

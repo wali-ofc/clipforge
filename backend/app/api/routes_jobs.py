@@ -121,6 +121,9 @@ def delete_job(
     worker = getattr(request.app.state, "worker", None)
     job_key = str(job_id)
     state = JobState(job.state)
+    # Source-backed cuts share their upload with the source project, so only
+    # standalone jobs own an upload directory. Read this before expire_all().
+    include_upload = job.source_id is None
 
     processing = bool(worker is not None and worker.is_processing(job_key))
     if not state.is_terminal or processing:
@@ -155,6 +158,6 @@ def delete_job(
     session.execute(delete(Job).where(Job.id == job_key))
     session.commit()
 
-    delete_job_files(settings, job_key)
+    delete_job_files(settings, job_key, include_upload=include_upload)
     logger.info("Deleted job %s and its media", job_key)
     return Response(status_code=204)

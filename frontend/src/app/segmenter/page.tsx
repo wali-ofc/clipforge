@@ -1,5 +1,5 @@
-import { RegMarks, ScissorsIcon } from "@/components/icons";
-import { SegmenterForm } from "@/components/SegmenterForm";
+import { ScissorsIcon } from "@/components/icons";
+import { SegmenterWorkspace } from "@/components/SegmenterWorkspace";
 
 const specimens = [
   {
@@ -39,9 +39,10 @@ export default function SegmenterPage() {
             </h1>
 
             <p className="lede mt-6">
-              Segmenter trims exactly the ranges you specify. Extract highlights,
-              remove sections, or stitch several moments into a single clip —
-              all on this machine.
+              Segmenter trims exactly the ranges you specify. Upload a video
+              once as a project, then cut as many timestamp batches as you like
+              from that same source — extract highlights, remove sections, or
+              stitch moments together.
             </p>
 
             <div className="mt-9 border-t border-line">
@@ -77,15 +78,8 @@ export default function SegmenterPage() {
             </p>
           </div>
 
-          <div className="sheet relative">
-            <RegMarks />
-            <div className="sheet-head">
-              <span className="meta">Source / 02</span>
-              <span className="badge badge-accent">Drop a video</span>
-            </div>
-            <div className="sheet-body">
-              <SegmenterForm />
-            </div>
+          <div>
+            <SegmenterWorkspace />
           </div>
         </section>
       </main>

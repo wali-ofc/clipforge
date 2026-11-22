@@ -518,13 +518,21 @@ export function JobStatusView({ jobId }: { jobId: string }) {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Link
-          href={job?.kind === "segmenter" ? "/segmenter" : "/"}
+          href={
+            job?.source_id
+              ? `/segmenter?source=${job.source_id}`
+              : job?.kind === "segmenter"
+                ? "/segmenter"
+                : "/"
+          }
           className="btn btn-quiet"
         >
           <ArrowLeftIcon className="h-4 w-4" />
-          {job?.kind === "segmenter"
-            ? "Back to Segmenter"
-            : "Back to AI Clipper"}
+          {job?.source_id
+            ? "Back to project"
+            : job?.kind === "segmenter"
+              ? "Back to Segmenter"
+              : "Back to AI Clipper"}
         </Link>
         <span className="mono text-[10px] uppercase tracking-[0.14em] text-ink-400">
           Job sheet / {jobId.slice(0, 8)}

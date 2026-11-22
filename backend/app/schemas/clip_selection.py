@@ -31,3 +31,14 @@ class LLMClip(BaseModel):
 
 class LLMClipSelection(BaseModel):
     clips: list[LLMClip] = Field(default_factory=list)
+
+
+class CompactClipProposal(BaseModel):
+    """One compact selection returned by the single shortlist request."""
+
+    rank: int = 1
+    start: float
+    end: float
+    score: float = 5.0
+    category: str | None = None
+    hook: str | None = None

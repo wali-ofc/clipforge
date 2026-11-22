@@ -28,7 +28,7 @@ from app.services.clip_selection import (
     ClipCandidate,
     ClipSelectionError,
     ClipSelector,
-    OllamaClipSelector,
+    create_clip_selector,
 )
 from app.services.media_probe import MediaProbeError, probe_media
 from app.services.rendering import ClipRenderer, FFmpegClipRenderer
@@ -377,7 +377,7 @@ def _select_clips_with_progress(
     cancel_token: CancelToken | None = None,
 ) -> tuple[list[ClipCandidate], str | None]:
     """Run selection with monotonic progress in the 84-97 range."""
-    active_selector = selector or OllamaClipSelector(settings)
+    active_selector = selector or create_clip_selector(settings)
     model_name = getattr(active_selector, "model_name", None)
 
     apply_progress(

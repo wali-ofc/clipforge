@@ -66,7 +66,7 @@ def create_session_factory(engine: Engine) -> sessionmaker[Session]:
 
 def init_db(engine: Engine) -> None:
     # Importing the models registers them on Base.metadata.
-    from app.models import clip, job  # noqa: F401
+    from app.models import clip, job, source  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
     _apply_sqlite_additive_migrations(engine)
@@ -95,6 +95,7 @@ def _apply_sqlite_additive_migrations(engine: Engine) -> None:
             "segment_spec": "TEXT",
             "segment_output_frame": "VARCHAR(32)",
             "segment_options": "JSON NOT NULL DEFAULT '{}'",
+            "source_id": "VARCHAR(36)",
         },
         "clips": {
             "crop_plan": "JSON NOT NULL DEFAULT '{}'",

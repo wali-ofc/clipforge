@@ -29,6 +29,7 @@ Desktop browser on the same machine as the backend. Long-running jobs are monito
 ## Capabilities and Constraints
 
 - Two tools: AI Clipper (upload + optional speaker tracking) and Segmenter (timestamp ranges, separate or joined, original or centred 9:16 frame).
+- Segmenter uses source projects: upload once, then queue any number of independent cut jobs against the same stored video, with a per-project cut history.
 - Job states: queued → inspecting → transcribing → selecting_clips → tracking_speakers → rendering → completed | failed | cancelled.
 - Clips stream inline for preview and download as `?download=true` attachments; files are only exposed after render verification.
 - Captions, music, text, and watermarks are intentionally not generated.

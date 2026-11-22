@@ -74,7 +74,9 @@ class Settings(BaseSettings):
     whisper_model_dir: Path = Path("./data/models")
     # None means auto-detect the spoken language.
     whisper_language: str | None = None
-    whisper_beam_size: int = Field(default=5, ge=1, le=10)
+    # Greedy decoding is roughly twice as fast as beam search on CPU. Word
+    # timestamps are still requested, so downstream snapping is unaffected.
+    whisper_beam_size: int = Field(default=1, ge=1, le=10)
     whisper_vad_filter: bool = True
     audio_extract_timeout_seconds: float = Field(default=3600.0, gt=0)
 
@@ -83,7 +85,7 @@ class Settings(BaseSettings):
     ollama_model: str = "qwen2.5:3b"
     ollama_timeout_seconds: float = Field(default=180.0, gt=0)
     ollama_temperature: float = Field(default=0.2, ge=0, le=2)
-    ollama_num_ctx: int = Field(default=8192, ge=1024)
+    ollama_num_ctx: int = Field(default=4096, ge=1024)
     ollama_keep_alive: str = "5m"
     ollama_think: bool = False
 
@@ -96,6 +98,24 @@ class Settings(BaseSettings):
     clip_window_seconds: float = Field(default=180.0, gt=0)
     clip_window_overlap_seconds: float = Field(default=30.0, ge=0)
     clip_max_candidates_per_chunk: int = Field(default=4, ge=1, le=20)
+
+    # Selection strategy. "compact" pre-scores the transcript deterministically
+    # and makes one small Ollama request; "legacy" keeps the original
+    # window-by-window full-transcript requests for A/B comparison.
+    clip_selection_mode: str = "compact"
+    # Number of deterministic candidate regions offered to the model.
+    clip_max_candidates: int = Field(default=12, ge=1, le=40)
+    # Target duration range for a candidate region (before hard limits apply).
+    clip_min_duration: float = Field(default=20.0, gt=0)
+    clip_max_duration: float = Field(default=60.0, gt=0)
+    # Number of clips the compact request may return.
+    clip_max_output: int = Field(default=5, ge=1, le=12)
+    # Snap selected boundaries to whole transcript segments, staying inside the
+    # candidate region. Deterministic; never issues another LLM request.
+    clip_refine_boundaries: bool = True
+    # Character budget for one candidate's transcript text in the prompt.
+    clip_candidate_max_chars: int = Field(default=520, ge=80)
+
     clip_score_weights: dict[str, float] = Field(
         default_factory=lambda: {
             "hook": 0.25,
@@ -190,6 +210,16 @@ class Settings(BaseSettings):
             raise ValueError("OLLAMA_MODEL must not be empty.")
         return cleaned
 
+    @field_validator("clip_selection_mode")
+    @classmethod
+    def _normalize_selection_mode(cls, value: str) -> str:
+        cleaned = value.strip().lower()
+        if cleaned not in {"compact", "legacy"}:
+            raise ValueError(
+                "CLIP_SELECTION_MODE must be 'compact' or 'legacy'."
+            )
+        return cleaned
+
     @field_validator("clip_score_weights")
     @classmethod
     def _normalize_score_weights(cls, value: dict[str, float]) -> dict[str, float]:
@@ -267,6 +297,22 @@ class Settings(BaseSettings):
         if self.clip_hard_max_seconds <= self.max_clip_seconds:
             raise ValueError(
                 "CLIP_HARD_MAX_SECONDS must be greater than MAX_CLIP_SECONDS."
+            )
+
+        if not self.clip_min_duration < self.clip_max_duration:
+            raise ValueError(
+                "CLIP_MIN_DURATION must be less than CLIP_MAX_DURATION."
+            )
+
+        if not (
+            self.clip_hard_min_seconds
+            <= self.clip_min_duration
+            < self.clip_max_duration
+            <= self.clip_hard_max_seconds
+        ):
+            raise ValueError(
+                "CLIP_MIN_DURATION/CLIP_MAX_DURATION must fit inside "
+                "CLIP_HARD_MIN_SECONDS..CLIP_HARD_MAX_SECONDS."
             )
 
         if self.clip_window_overlap_seconds >= self.clip_window_seconds:

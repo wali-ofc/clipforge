@@ -14,6 +14,7 @@ class JobRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: str
+    source_id: str | None = None
     original_filename: str
     content_type: str | None = None
     size_bytes: int
