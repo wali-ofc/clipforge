@@ -20,9 +20,14 @@ import {
 import {
   ApiError,
   deleteJob,
+  getClipCaptions,
   getClipFileUrl,
   getJob,
+  getJobCaptions,
+  getJobCaptionsSrtUrl,
+  getJobCaptionsTxtUrl,
   getJobClips,
+  transcribeSource,
 } from "@/lib/api";
 import {
   formatBytes,
@@ -33,7 +38,7 @@ import {
   isTerminalState,
   stateLabel,
 } from "@/lib/format";
-import type { Clip, Job, JobState } from "@/types/job";
+import type { CaptionsResponse, Clip, Job, JobState } from "@/types/job";
 
 function badgeClasses(state: JobState): string {
   if (state === "completed") return "badge badge-ok";
@@ -126,14 +131,40 @@ function fallbackNote(clip: Clip): string | null {
   }
 }
 
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    try {
+      const el = document.createElement("textarea");
+      el.value = text;
+      el.style.position = "fixed";
+      el.style.opacity = "0";
+      document.body.appendChild(el);
+      el.focus();
+      el.select();
+      const ok = document.execCommand("copy");
+      document.body.removeChild(el);
+      return ok;
+    } catch {
+      return false;
+    }
+  }
+}
+
 function ClipCard({
   clip,
   index,
   jobKind,
+  jobHasTranscript,
+  captionLanguage,
 }: {
   clip: Clip;
   index: number;
   jobKind: "ai_clipper" | "segmenter";
+  jobHasTranscript: boolean;
+  captionLanguage: string;
 }) {
   const isSegmenter = jobKind === "segmenter";
   const score =
@@ -171,6 +202,53 @@ function ClipCard({
     isSegmenter && outputFrame === "original" && clip.width && clip.height
       ? ({ aspectRatio: `${clip.width} / ${clip.height}` } as const)
       : undefined;
+
+  const [captionsOpen, setCaptionsOpen] = useState(false);
+  const [captions, setCaptions] = useState<CaptionsResponse | null>(null);
+  const [captionsLoading, setCaptionsLoading] = useState(false);
+  const [captionsError, setCaptionsError] = useState<string | null>(null);
+  const [copyState, setCopyState] = useState<"plain" | "ts" | null>(null);
+
+  useEffect(() => {
+    if (!captionsOpen || !jobHasTranscript || captions || captionsLoading) return;
+    let cancelled = false;
+    const controller = new AbortController();
+    setCaptionsLoading(true);
+    setCaptionsError(null);
+    getClipCaptions(clip.id, captionLanguage, controller.signal)
+      .then((data) => {
+        if (cancelled) return;
+        setCaptions(data);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setCaptionsError(err instanceof Error ? err.message : "Could not load captions.");
+      })
+      .finally(() => {
+        if (!cancelled) setCaptionsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [captionsOpen, jobHasTranscript, captions, captionsLoading, clip.id, captionLanguage]);
+
+  useEffect(() => {
+    // Reset captions when language changes so they can be reloaded.
+    setCaptions(null);
+    setCaptionsError(null);
+  }, [captionLanguage]);
+
+  async function handleCopy(kind: "plain" | "ts") {
+    const text = kind === "plain" ? captions?.plain_text ?? "" : captions?.timestamped_text ?? "";
+    if (!text.trim()) return;
+    const ok = await copyText(text);
+    if (ok) {
+      setCopyState(kind);
+      setTimeout(() => setCopyState(null), 1400);
+    }
+  }
 
   return (
     <article className="sheet-flat flex flex-col p-4">
@@ -295,6 +373,79 @@ function ClipCard({
         </p>
       ) : null}
 
+      {jobHasTranscript ? (
+        <div className="mt-3 border-t border-line pt-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className="btn btn-quiet border border-line"
+              onClick={() => setCaptionsOpen((v) => !v)}
+            >
+              {captionsOpen ? "Hide captions" : "Show captions"}
+            </button>
+            <button
+              type="button"
+              className="btn btn-quiet border border-line"
+              onClick={async () => {
+                if (!captions && !captionsLoading) {
+                  setCaptionsOpen(true);
+                  return;
+                }
+                await handleCopy("plain");
+              }}
+              disabled={captionsLoading}
+            >
+              <CopyIcon className="h-3.5 w-3.5" />
+              {copyState === "plain" ? "Copied" : "Copy captions"}
+            </button>
+            <button
+              type="button"
+              className="btn btn-quiet border border-line"
+              onClick={async () => {
+                if (!captions && !captionsLoading) {
+                  setCaptionsOpen(true);
+                  return;
+                }
+                await handleCopy("ts");
+              }}
+              disabled={captionsLoading}
+            >
+              <CopyIcon className="h-3.5 w-3.5" />
+              {copyState === "ts" ? "Copied" : "Copy timestamped"}
+            </button>
+          </div>
+
+          {captionsOpen ? (
+            <div className="mt-2">
+              {captionsLoading ? (
+                <p className="mono text-[11px] text-ink-400">Loading captions…</p>
+              ) : captionsError ? (
+                <p className="notice notice-warn text-[11px] text-warn-700">{captionsError}</p>
+              ) : captions && captions.cues.length > 0 ? (
+                <div className="max-h-56 overflow-auto border border-line bg-paper-0 p-3">
+                  <ul className="space-y-1.5">
+                    {captions.cues.map((cue, i) => (
+                      <li key={`${cue.start}-${i}`} className="text-[12px] leading-5 text-ink-800">
+                        <span className="mono mr-2 text-[10px] text-ink-400">
+                          {formatDuration(cue.start)}
+                        </span>
+                        <span className="whitespace-pre-line">
+                          {cue.display_text ?? cue.text}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                <p className="mono text-[11px] text-ink-400">
+                  No transcript words found for this clip range.
+                </p>
+              )}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
       {isRendered ? (
         <a
           href={getClipFileUrl(clip.id, true)}
@@ -360,6 +511,14 @@ export function JobStatusView({ jobId }: { jobId: string }) {
   const [clipsError, setClipsError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [captionLanguage, setCaptionLanguage] = useState<"roman" | "original">("roman");
+  const [copyAllState, setCopyAllState] = useState<"plain" | "ts" | null>(null);
+  const [copyAllBusy, setCopyAllBusy] = useState(false);
+  const [transcriptPreview, setTranscriptPreview] = useState<CaptionsResponse | null>(null);
+  const [transcriptPreviewLoading, setTranscriptPreviewLoading] = useState(false);
+  const [transcriptPreviewError, setTranscriptPreviewError] = useState<string | null>(null);
+  const [transcribeBusy, setTranscribeBusy] = useState(false);
+  const [transcribeError, setTranscribeError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!job || job.clip_count <= 0) {
@@ -409,6 +568,35 @@ export function JobStatusView({ jobId }: { jobId: string }) {
   }, [job?.clip_count, job?.state, jobId, retryNonce]);
 
   useEffect(() => {
+    if (!job?.has_transcript) {
+      setTranscriptPreview(null);
+      setTranscriptPreviewError(null);
+      return;
+    }
+    let cancelled = false;
+    const controller = new AbortController();
+    setTranscriptPreviewLoading(true);
+    setTranscriptPreviewError(null);
+    getJobCaptions(jobId, captionLanguage, controller.signal)
+      .then((data) => {
+        if (cancelled) return;
+        setTranscriptPreview(data);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setTranscriptPreviewError(err instanceof Error ? err.message : "Could not load transcript preview.");
+      })
+      .finally(() => {
+        if (!cancelled) setTranscriptPreviewLoading(false);
+      });
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [job?.has_transcript, jobId, captionLanguage, retryNonce]);
+
+  useEffect(() => {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -419,8 +607,11 @@ export function JobStatusView({ jobId }: { jobId: string }) {
         setJob(data);
         setError(null);
         setNotFound(false);
-        if (!isTerminalState(data.state)) {
-          timer = setTimeout(tick, 2000);
+        const transcriptPending =
+          data.source_transcript_status === "processing" ||
+          data.source_transcript_status === "queued";
+        if (!isTerminalState(data.state) || transcriptPending) {
+          timer = setTimeout(tick, transcriptPending ? 3000 : 2000);
         }
       } catch (requestError) {
         if (cancelled) return;
@@ -458,6 +649,45 @@ export function JobStatusView({ jobId }: { jobId: string }) {
       setTimeout(() => setCopied(false), 1600);
     } catch {
       setCopied(false);
+    }
+  }
+
+  async function handleGenerateTranscript() {
+    if (!job?.source_id || transcribeBusy) return;
+    setTranscribeBusy(true);
+    setTranscribeError(null);
+    try {
+      await transcribeSource(job.source_id);
+      setRetryNonce((v) => v + 1);
+    } catch (err) {
+      setTranscribeError(err instanceof Error ? err.message : "Could not start transcription.");
+    } finally {
+      setTranscribeBusy(false);
+    }
+  }
+
+  async function copyAllCaptions(kind: "plain" | "ts") {
+    if (!job?.has_transcript || clips.length === 0 || copyAllBusy) return;
+    setCopyAllBusy(true);
+    try {
+      const results = await Promise.all(
+        clips.map((clip) => getClipCaptions(clip.id, captionLanguage)),
+      );
+      const chunks = results.map((res, i) => {
+        const clip = clips[i];
+        const header = `Clip ${i + 1} — ${formatDuration(clip.start_seconds)} to ${formatDuration(clip.end_seconds)}`;
+        const text = (kind === "plain" ? res.plain_text : res.timestamped_text) || "(No captions)";
+        return `${header}\n${text}`.trim();
+      });
+      const ok = await copyText(chunks.join("\n\n"));
+      if (ok) {
+        setCopyAllState(kind);
+        setTimeout(() => setCopyAllState(null), 1400);
+      }
+    } catch {
+      // Keep quiet; per-clip UI shows errors.
+    } finally {
+      setCopyAllBusy(false);
     }
   }
 
@@ -710,14 +940,38 @@ export function JobStatusView({ jobId }: { jobId: string }) {
           {job.clip_count > 0 ? (
             <section className="sheet">
               <div className="section-head mx-5 mt-5">
-                <h2 className="title">
-                  {job.kind === "segmenter" ? "Segments" : "Rendered clips"}
-                </h2>
-                <span className="mono text-[10px] uppercase tracking-[0.12em] text-ink-400">
-                  {job.kind === "segmenter"
-                    ? `${job.segment_output_frame === "portrait_9_16" ? "9:16 portrait" : "original frame"} · by timestamp`
-                    : `${job.clip_selection_model ?? "local model"} · heuristic score`}
-                </span>
+                <div>
+                  <h2 className="title">
+                    {job.kind === "segmenter" ? "Segments" : "Rendered clips"}
+                  </h2>
+                  <span className="mono mt-1 block text-[10px] uppercase tracking-[0.12em] text-ink-400">
+                    {job.kind === "segmenter"
+                      ? `${job.segment_output_frame === "portrait_9_16" ? "9:16 portrait" : "original frame"} · by timestamp`
+                      : `${job.clip_selection_model ?? "local model"} · heuristic score`}
+                  </span>
+                </div>
+                {job.has_transcript ? (
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className="btn btn-quiet border border-line"
+                      onClick={() => void copyAllCaptions("plain")}
+                      disabled={copyAllBusy || clips.length === 0}
+                    >
+                      <CopyIcon className="h-3.5 w-3.5" />
+                      {copyAllState === "plain" ? "Copied" : "Copy all captions"}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-quiet border border-line"
+                      onClick={() => void copyAllCaptions("ts")}
+                      disabled={copyAllBusy || clips.length === 0}
+                    >
+                      <CopyIcon className="h-3.5 w-3.5" />
+                      {copyAllState === "ts" ? "Copied" : "Copy all timestamped"}
+                    </button>
+                  </div>
+                ) : null}
               </div>
               <div className="sheet-body">
                 {clipsError ? (
@@ -736,6 +990,8 @@ export function JobStatusView({ jobId }: { jobId: string }) {
                         clip={clip}
                         index={index}
                         jobKind={(job.kind as "ai_clipper" | "segmenter") ?? "ai_clipper"}
+                        jobHasTranscript={Boolean(job.has_transcript)}
+                        captionLanguage={captionLanguage}
                       />
                     ))}
                   </div>
@@ -750,33 +1006,117 @@ export function JobStatusView({ jobId }: { jobId: string }) {
             </section>
           ) : null}
 
-          {job.kind !== "segmenter" && job.has_transcript ? (
+          {job.has_transcript ? (
             <section className="sheet">
               <div className="sheet-head">
-                <h2 className="title">Transcript</h2>
-                <span className="mono text-[10px] uppercase tracking-[0.12em] text-ink-400">
-                  internal data
-                </span>
+                <div>
+                  <h2 className="title">Captions / Transcript</h2>
+                  <p className="note mt-1 text-[11px]">
+                    Captions are generated separately. Exported MP4s remain clean with no burned-in text.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="mono text-[10px] uppercase tracking-[0.12em] text-ink-400" htmlFor="caption-language">
+                    Caption language
+                  </label>
+                  <select
+                    id="caption-language"
+                    className="field h-9 w-auto min-w-[160px] py-0 text-[12px]"
+                    value={captionLanguage}
+                    onChange={(e) => setCaptionLanguage(e.target.value as "roman" | "original")}
+                  >
+                    <option value="roman">Roman Urdu (default)</option>
+                    <option value="original">Original transcript</option>
+                  </select>
+                </div>
               </div>
               <div className="sheet-body">
                 <div className="sm:grid sm:grid-cols-3 sm:gap-x-8">
-                  <Detail
-                    label="Language"
-                    value={job.transcript_language?.toUpperCase() ?? "Not detected"}
-                  />
-                  <Detail
-                    label="Segments"
-                    value={String(job.transcript_segment_count ?? 0)}
-                  />
-                  <Detail
-                    label="Speech"
-                    value={job.has_speech ? "Detected" : "None detected"}
-                  />
+                  <Detail label="Language" value={job.transcript_language?.toUpperCase() ?? "Not detected"} />
+                  <Detail label="Segments" value={String(job.transcript_segment_count ?? 0)} />
+                  <Detail label="Speech" value={job.has_speech ? "Detected" : "None detected"} />
                 </div>
-                <p className="note mt-3 text-[11px]">
-                  Word-level timestamps are stored in the job work directory.
-                  Captions are not generated or burned into any video.
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <a
+                    href={getJobCaptionsSrtUrl(job.id, captionLanguage)}
+                    className="btn btn-ghost border border-line"
+                    download
+                  >
+                    <DownloadIcon className="h-3.5 w-3.5" />
+                    Download SRT
+                  </a>
+                  <a
+                    href={getJobCaptionsTxtUrl(job.id, captionLanguage)}
+                    className="btn btn-ghost border border-line"
+                    download
+                  >
+                    <DownloadIcon className="h-3.5 w-3.5" />
+                    Download TXT
+                  </a>
+                </div>
+
+                <div className="mt-4">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <h3 className="text-[13px] font-bold text-ink-900">Transcript preview</h3>
+                    <span className="mono text-[10px] text-ink-400">
+                      {transcriptPreview ? `${transcriptPreview.count} cues` : ""}
+                    </span>
+                  </div>
+                  {transcriptPreviewLoading ? (
+                    <p className="mono text-[11px] text-ink-400">Loading transcript preview…</p>
+                  ) : transcriptPreviewError ? (
+                    <p className="notice notice-warn text-[11px] text-warn-700">{transcriptPreviewError}</p>
+                  ) : transcriptPreview && transcriptPreview.cues.length > 0 ? (
+                    <div className="max-h-72 overflow-auto border border-line bg-paper-0 p-3">
+                      <ul className="space-y-1.5">
+                        {transcriptPreview.cues.map((cue, i) => (
+                          <li key={`${cue.start}-${i}`} className="text-[12px] leading-5 text-ink-800">
+                            <span className="mono mr-2 text-[10px] text-ink-400">{formatDuration(cue.start)}</span>
+                            <span className="whitespace-pre-line">
+                              {cue.display_text ?? cue.text}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : (
+                    <p className="mono text-[11px] text-ink-400">No transcript cues available.</p>
+                  )}
+                </div>
+              </div>
+            </section>
+          ) : job.source_id ? (
+            <section className="sheet">
+              <div className="sheet-head">
+                <h2 className="title">Captions / Transcript</h2>
+                <span className="mono text-[10px] uppercase tracking-[0.12em] text-ink-400">Transcript required</span>
+              </div>
+              <div className="sheet-body">
+                <p className="note text-[12px]">
+                  No transcript is available for this source yet. Generate one to download SRT/TXT and show per-segment captions.
                 </p>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => void handleGenerateTranscript()}
+                    disabled={transcribeBusy || job.source_transcript_status === "processing" || job.source_transcript_status === "queued"}
+                  >
+                    {transcribeBusy || job.source_transcript_status === "processing" || job.source_transcript_status === "queued" ? (
+                      <SpinnerIcon className="h-4 w-4 animate-spin" />
+                    ) : null}
+                    {job.source_transcript_status === "processing" || job.source_transcript_status === "queued"
+                      ? "Transcribing…"
+                      : "Generate transcript"}
+                  </button>
+                  {job.source_transcript_status ? (
+                    <span className="mono text-[10px] uppercase tracking-[0.12em] text-ink-400">
+                      Status: {job.source_transcript_status}
+                    </span>
+                  ) : null}
+                </div>
+                {transcribeError ? <p className="notice notice-warn mt-3 text-[11px] text-warn-700">{transcribeError}</p> : null}
               </div>
             </section>
           ) : null}

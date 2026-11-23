@@ -1,6 +1,5 @@
 {
   "7": "Frontend UI Components",
-  "13": "Ollama Selection Client",
   "14": "Face Detection Core",
   "15": "Frontend Dependencies",
   "16": "App Shell Layout",
@@ -9,11 +8,8 @@
   "20": "Speaker Tracking Results",
   "27": "Landing Page UI",
   "28": "Frontend TypeScript Config",
-  "32": "Clip Candidate Scoring",
   "33": "Project Docs Concepts",
-  "35": "Job API Operations",
   "37": "Frontend API Client",
-  "42": "Clip Selection Logic",
   "47": "Health Endpoint Tests",
   "49": "App Package Init",
   "50": "Schemas Package Init",

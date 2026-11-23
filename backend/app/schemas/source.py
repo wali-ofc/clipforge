@@ -25,6 +25,13 @@ class SourceRead(BaseModel):
     container_format: str | None = None
     frame_rate: float | None = None
 
+    has_transcript: bool = False
+    transcript_language: str | None = None
+    transcript_segment_count: int | None = None
+    has_speech: bool | None = None
+    transcript_status: str = "none"
+    transcript_error: str | None = None
+
     job_count: int = 0
 
     created_at: datetime

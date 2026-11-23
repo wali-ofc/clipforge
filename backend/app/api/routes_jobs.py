@@ -6,7 +6,7 @@ import logging
 import time
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
@@ -14,11 +14,21 @@ from app.api.deps import get_session
 from app.api.errors import api_error
 from app.models.clip import Clip
 from app.models.job import Job, JobState
+from app.models.source import Source
 from app.schemas.clip import ClipRead
 from app.schemas.job import JobRead
 from app.schemas.transcript import Transcript
+from app.services.captioning import (
+    CAPTION_DEFAULTS,
+    captions_for_range,
+    captions_for_transcript,
+    captions_to_plain_text,
+    format_srt,
+    format_transcript_txt,
+)
 from app.services.cleanup import delete_job_files
 from app.services.transcription import load_transcript
+from app.utils.files import sanitize_display_filename
 from app.utils.paths import resolve_stored_path
 from app.utils.time import utc_now
 
@@ -63,22 +73,33 @@ def get_job_transcript(
 ) -> Transcript:
     """Return the stored timestamped transcript for a job.
 
-    This is internal pipeline data, not a subtitle file. Captions are never
-    burned into output videos.
+    The original transcript is preserved; caption/romanization layers are derived
+    separately and never overwrite this data.
     """
     job = _get_job_or_404(session, job_id)
-    if not job.transcript_path:
+    return _resolve_job_transcript(session, job, request.app.state.settings)
+
+
+def _resolve_job_transcript(session: Session, job: Job, settings) -> Transcript:
+    transcript_path = job.transcript_path
+    if not transcript_path and job.source_id:
+        source = session.get(Source, job.source_id)
+        if source and source.transcript_path:
+            transcript_path = source.transcript_path
+    if not transcript_path:
         raise api_error(
             404,
             "transcript_not_found",
-            "No transcript is available for this job yet.",
+            "No transcript is available for this video yet.",
         )
+    return _load_transcript_path(transcript_path, settings, job_id=job.id)
 
-    settings = request.app.state.settings
+
+def _load_transcript_path(transcript_path: str, settings, *, job_id: str) -> Transcript:
     try:
-        path = resolve_stored_path(settings, job.transcript_path)
+        path = resolve_stored_path(settings, transcript_path)
     except ValueError as exc:
-        logger.error("Job %s has an unsafe transcript path", job.id)
+        logger.error("Job %s has an unsafe transcript path", job_id)
         raise api_error(
             500,
             "transcript_unreadable",
@@ -94,13 +115,134 @@ def get_job_transcript(
 
     try:
         return load_transcript(path)
-    except Exception as exc:  # noqa: BLE001 - corrupt JSON is a server error
-        logger.exception("Could not read transcript for job %s", job.id)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Could not read transcript for job %s", job_id)
         raise api_error(
             500,
             "transcript_unreadable",
             "The stored transcript could not be read.",
         ) from exc
+
+
+def _caption_filename(job: Job, suffix: str) -> str:
+    stem = sanitize_display_filename(job.original_filename or "video")
+    stem = stem.rsplit(".", 1)[0] if "." in stem else stem
+    return sanitize_display_filename(f"{stem}{suffix}")
+
+
+def _cue_payload(cue) -> dict:
+    return {
+        "start": cue.start,
+        "end": cue.end,
+        "text": cue.text,
+        "display_text": cue.display_text or cue.text,
+    }
+
+
+@router.get("/jobs/{job_id}/captions")
+def get_job_captions(
+    job_id: UUID,
+    request: Request,
+    language: str = Query("roman"),
+    max_words: int = Query(8, ge=1, le=20),
+    session: Session = Depends(get_session),
+) -> dict:
+    job = _get_job_or_404(session, job_id)
+    transcript = _resolve_job_transcript(session, job, request.app.state.settings)
+    cues = captions_for_transcript(transcript, language=language, max_words=max_words)
+    return {
+        "job_id": job.id,
+        "language": (language or "roman").lower(),
+        "source_language": transcript.language,
+        "max_words": max_words,
+        "defaults": CAPTION_DEFAULTS,
+        "count": len(cues),
+        "cues": [_cue_payload(cue) for cue in cues],
+    }
+
+
+@router.get("/jobs/{job_id}/captions.srt")
+def download_job_captions_srt(
+    job_id: UUID,
+    request: Request,
+    language: str = Query("roman"),
+    max_words: int = Query(8, ge=1, le=20),
+    session: Session = Depends(get_session),
+) -> Response:
+    job = _get_job_or_404(session, job_id)
+    transcript = _resolve_job_transcript(session, job, request.app.state.settings)
+    cues = captions_for_transcript(transcript, language=language, max_words=max_words)
+    body = format_srt(cues)
+    filename = _caption_filename(job, "-roman-urdu.srt" if (language or "roman").lower() == "roman" else ".srt")
+    return Response(
+        content=body,
+        media_type="application/x-subrip; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/jobs/{job_id}/captions.txt")
+def download_job_captions_txt(
+    job_id: UUID,
+    request: Request,
+    language: str = Query("roman"),
+    max_words: int = Query(8, ge=1, le=20),
+    session: Session = Depends(get_session),
+) -> Response:
+    job = _get_job_or_404(session, job_id)
+    transcript = _resolve_job_transcript(session, job, request.app.state.settings)
+    cues = captions_for_transcript(transcript, language=language, max_words=max_words)
+    body = format_transcript_txt(cues, include_timestamps=True)
+    filename = _caption_filename(job, "-transcript.txt")
+    return Response(
+        content=body,
+        media_type="text/plain; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/jobs/{job_id}/captions/range")
+def get_job_caption_range(
+    job_id: UUID,
+    request: Request,
+    start: float = Query(..., ge=0),
+    end: float = Query(..., gt=0),
+    language: str = Query("roman"),
+    max_words: int = Query(8, ge=1, le=20),
+    clip_relative: bool = Query(True),
+    session: Session = Depends(get_session),
+) -> dict:
+    job = _get_job_or_404(session, job_id)
+    transcript = _resolve_job_transcript(session, job, request.app.state.settings)
+    duration = float(job.duration_seconds or transcript.duration or 0.0)
+    if duration and end > duration + 0.25:
+        raise api_error(400, "invalid_range", "End time is beyond the video duration.")
+    if end <= start:
+        raise api_error(400, "invalid_range", "End time must be after start time.")
+    cues = captions_for_range(
+        transcript,
+        start,
+        end,
+        language=language,
+        max_words=max_words,
+        clip_relative=clip_relative,
+    )
+    plain = captions_to_plain_text(cues, timestamped=False)
+    timestamped = captions_to_plain_text(cues, timestamped=True)
+    return {
+        "job_id": job.id,
+        "start": start,
+        "end": end,
+        "clip_relative": clip_relative,
+        "language": (language or "roman").lower(),
+        "source_language": transcript.language,
+        "max_words": max_words,
+        "defaults": CAPTION_DEFAULTS,
+        "count": len(cues),
+        "plain_text": plain,
+        "timestamped_text": timestamped,
+        "cues": [_cue_payload(cue) for cue in cues],
+    }
 
 
 @router.delete("/jobs/{job_id}", status_code=204)

@@ -16,6 +16,7 @@ import {
   AlertIcon,
   ArrowRightIcon,
   CheckIcon,
+  CopyIcon,
   FileVideoIcon,
   RegMarks,
   ScissorsIcon,
@@ -30,11 +31,13 @@ import {
   createSourceSegment,
   deleteSource,
   getHealth,
+  getSourceCaptionRange,
   getSourceJobs,
   listSources,
+  transcribeSource,
 } from "@/lib/api";
 import { formatBytes, formatDate, formatDuration, stateLabel } from "@/lib/format";
-import type { Health, Job, Source } from "@/types/job";
+import type { CaptionsResponse, Health, Job, Source } from "@/types/job";
 
 const FALLBACK_MAX_UPLOAD = 5 * 1024 ** 3;
 const FALLBACK_FORMATS = [".mp4", ".mov", ".mkv"];
@@ -44,6 +47,104 @@ function toolsReady(health: Health | null): boolean {
     health?.checks.ffmpeg?.available === true &&
     health?.checks.ffprobe?.available === true
   );
+}
+
+interface ParsedRange {
+  start: number;
+  end: number;
+  label: string;
+}
+
+interface CaptionPreview {
+  key: string;
+  range: ParsedRange;
+  data: CaptionsResponse;
+}
+
+const MAX_CAPTION_PREVIEW_RANGES = 12;
+
+function parseTimestamp(value: string): number | null {
+  const parts = value.split(":").map((part) => Number(part));
+  if (parts.some((part) => !Number.isFinite(part) || part < 0)) return null;
+  if (parts.length === 1) return parts[0];
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  return null;
+}
+
+function parseRanges(spec: string, duration: number | null): ParsedRange[] {
+  const pattern = /(\d+(?::\d+){0,2})\s*(?:-|–|—|to)\s*(\d+(?::\d+){0,2})/gi;
+  const seen = new Set<string>();
+  const ranges: ParsedRange[] = [];
+  const limit =
+    duration && Number.isFinite(duration) && duration > 0 ? duration : null;
+
+  for (const match of spec.matchAll(pattern)) {
+    const rawStart = parseTimestamp(match[1]);
+    const rawEnd = parseTimestamp(match[2]);
+    if (rawStart === null || rawEnd === null) continue;
+
+    const start = Number(Math.max(0, rawStart).toFixed(3));
+    const end = Number(
+      (limit === null ? rawEnd : Math.min(rawEnd, limit)).toFixed(3),
+    );
+    if (end <= start) continue;
+
+    const key = `${start}-${end}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    ranges.push({
+      start,
+      end,
+      label: `${formatDuration(start)} – ${formatDuration(end)}`,
+    });
+    if (ranges.length >= MAX_CAPTION_PREVIEW_RANGES) break;
+  }
+  return ranges;
+}
+
+function cueText(cue: { text: string; display_text?: string }): string {
+  return cue.display_text || cue.text;
+}
+
+function rangeCaptionText(item: CaptionPreview, timestamped: boolean): string {
+  if (timestamped) {
+    return (
+      item.data.timestamped_text ||
+      item.data.cues
+        .map((cue) => `${formatDuration(cue.start)} - ${cueText(cue)}`)
+        .join("\n")
+    );
+  }
+  return (
+    item.data.plain_text || item.data.cues.map((cue) => cueText(cue)).join("\n")
+  );
+}
+
+async function copyToClipboard(text: string): Promise<boolean> {
+  if (!text.trim()) return false;
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // Fall through to the legacy selection-based copy below.
+  }
+  try {
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed";
+    area.style.opacity = "0";
+    document.body.appendChild(area);
+    area.select();
+    const copied = document.execCommand("copy");
+    area.remove();
+    return copied;
+  } catch {
+    return false;
+  }
 }
 
 export function SegmenterWorkspace() {
@@ -69,6 +170,18 @@ export function SegmenterWorkspace() {
   const [cutting, setCutting] = useState(false);
   const [cutError, setCutError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  const [captionLanguage, setCaptionLanguage] = useState<"roman" | "original">(
+    "roman",
+  );
+  const [captionPreview, setCaptionPreview] = useState<CaptionPreview[]>([]);
+  const [captionPreviewOpen, setCaptionPreviewOpen] = useState(false);
+  const [captionPreviewLoading, setCaptionPreviewLoading] = useState(false);
+  const [captionPreviewError, setCaptionPreviewError] = useState<string | null>(
+    null,
+  );
+  const [captionCopyKey, setCaptionCopyKey] = useState<string | null>(null);
+  const [transcribeBusy, setTranscribeBusy] = useState(false);
 
   const refreshSources = useCallback(async () => {
     const data = await listSources();
@@ -146,6 +259,9 @@ export function SegmenterWorkspace() {
     setActiveId(id);
     setShowUpload(false);
     setCutError(null);
+    setCaptionPreview([]);
+    setCaptionPreviewOpen(false);
+    setCaptionPreviewError(null);
     window.history.replaceState(null, "", `/segmenter?source=${id}`);
   }
 
@@ -253,6 +369,82 @@ export function SegmenterWorkspace() {
     } finally {
       setDeleting(false);
     }
+  }
+
+  async function handleGenerateTranscript() {
+    if (!activeSource || transcribeBusy) return;
+    setTranscribeBusy(true);
+    setCaptionPreviewError(null);
+    try {
+      await transcribeSource(activeSource.id);
+      await refreshSources();
+      setCaptionPreviewError(
+        "Transcription started. Reload this page in a moment, then preview captions.",
+      );
+    } catch (error) {
+      setCaptionPreviewError(
+        error instanceof ApiError
+          ? error.message
+          : "Could not start transcription.",
+      );
+    } finally {
+      setTranscribeBusy(false);
+    }
+  }
+
+  async function loadCaptionPreview() {
+    if (!activeSource || captionPreviewLoading) return;
+    if (!activeSource.has_transcript) {
+      setCaptionPreviewError("Generate a transcript before previewing captions.");
+      return;
+    }
+
+    const ranges = parseRanges(spec, activeSource.duration_seconds);
+    if (!ranges.length) {
+      setCaptionPreview([]);
+      setCaptionPreviewOpen(false);
+      setCaptionPreviewError("Enter at least one valid MM:SS – MM:SS range.");
+      return;
+    }
+
+    setCaptionPreviewLoading(true);
+    setCaptionPreviewError(null);
+    try {
+      const results = await Promise.all(
+        ranges.map(async (range, index) => ({
+          key: `${range.start}-${range.end}-${index}`,
+          range,
+          data: await getSourceCaptionRange(
+            activeSource.id,
+            range.start,
+            range.end,
+            captionLanguage,
+          ),
+        })),
+      );
+      setCaptionPreview(results);
+      setCaptionPreviewOpen(true);
+    } catch (error) {
+      setCaptionPreview([]);
+      setCaptionPreviewOpen(false);
+      setCaptionPreviewError(
+        error instanceof ApiError
+          ? error.message
+          : "Could not load captions for these ranges.",
+      );
+    } finally {
+      setCaptionPreviewLoading(false);
+    }
+  }
+
+  async function handleCopyCaptionText(
+    text: string,
+    key: string,
+  ) {
+    const copied = await copyToClipboard(text);
+    if (!copied) return;
+    setCaptionCopyKey(key);
+    window.setTimeout(() => setCaptionCopyKey(null), 1400);
   }
 
   const acceptedTypes = [
@@ -557,7 +749,12 @@ export function SegmenterWorkspace() {
                 <textarea
                   id="segment-spec"
                   value={spec}
-                  onChange={(event) => setSpec(event.target.value)}
+                  onChange={(event) => {
+                    setSpec(event.target.value);
+                    setCaptionPreview([]);
+                    setCaptionPreviewOpen(false);
+                    setCaptionPreviewError(null);
+                  }}
                   disabled={cutting}
                   rows={5}
                   spellCheck={false}
@@ -568,6 +765,198 @@ export function SegmenterWorkspace() {
                 <p className="mono mt-2 text-[10px] leading-5 text-ink-500">
                   New line = separate clip · commas in a line = one joined clip
                 </p>
+              </div>
+
+              <div className="border-t border-line pt-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[13px] font-bold text-ink-900">
+                      Captions for these ranges
+                    </p>
+                    <p className="mono mt-1 text-[10px] uppercase tracking-[0.1em] text-ink-400">
+                      Roman Urdu default · classic · Arial · centered · never burned in
+                    </p>
+                  </div>
+                  <label className="flex items-center gap-2 text-[11px] text-ink-500">
+                    Language
+                    <select
+                      value={captionLanguage}
+                      onChange={(event) => {
+                        const next = event.target.value as "roman" | "original";
+                        setCaptionLanguage(next);
+                        setCaptionPreview([]);
+                        setCaptionPreviewOpen(false);
+                        setCaptionPreviewError(null);
+                      }}
+                      className="field min-h-[36px] py-1 text-[11px]"
+                      aria-label="Caption language"
+                    >
+                      <option value="roman">Roman Urdu</option>
+                      <option value="original">Original transcript</option>
+                    </select>
+                  </label>
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void loadCaptionPreview()}
+                    disabled={
+                      !activeSource.has_transcript ||
+                      captionPreviewLoading ||
+                      !spec.trim()
+                    }
+                    className="btn btn-ghost"
+                  >
+                    {captionPreviewLoading ? (
+                      <SpinnerIcon className="h-3.5 w-3.5 animate-spin" />
+                    ) : null}
+                    {captionPreviewLoading ? "Loading…" : "Preview captions"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={captionPreview.length === 0}
+                    onClick={() =>
+                      void handleCopyCaptionText(
+                        captionPreview
+                          .map((item) => rangeCaptionText(item, false))
+                          .filter(Boolean)
+                          .join("\n\n"),
+                        "all-plain",
+                      )
+                    }
+                    className="btn btn-quiet"
+                  >
+                    <CopyIcon className="h-3.5 w-3.5" />
+                    {captionCopyKey === "all-plain" ? "Copied" : "Copy all plain"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={captionPreview.length === 0}
+                    onClick={() =>
+                      void handleCopyCaptionText(
+                        captionPreview
+                          .map((item) => rangeCaptionText(item, true))
+                          .filter(Boolean)
+                          .join("\n\n"),
+                        "all-timed",
+                      )
+                    }
+                    className="btn btn-quiet"
+                  >
+                    <CopyIcon className="h-3.5 w-3.5" />
+                    {captionCopyKey === "all-timed"
+                      ? "Copied"
+                      : "Copy all timestamped"}
+                  </button>
+                </div>
+
+                {!activeSource.has_transcript ? (
+                  <div className="notice notice-warn mt-3 text-xs text-warn-700">
+                    <AlertIcon className="h-4 w-4 shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <p>
+                        No transcript is available for this source yet. Generate one
+                        to preview and copy captions.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => void handleGenerateTranscript()}
+                        disabled={transcribeBusy}
+                        className="btn btn-ghost mt-2"
+                      >
+                        {transcribeBusy ? (
+                          <SpinnerIcon className="h-3.5 w-3.5 animate-spin" />
+                        ) : null}
+                        {transcribeBusy ? "Starting…" : "Generate transcript"}
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
+                {captionPreviewError ? (
+                  <p className="notice notice-warn mt-3 text-[11px] text-warn-700">
+                    <AlertIcon className="h-4 w-4 shrink-0" />
+                    {captionPreviewError}
+                  </p>
+                ) : null}
+
+                {captionPreviewOpen ? (
+                  <div className="mt-4 space-y-3">
+                    {captionPreview.length === 0 ? (
+                      <p className="mono text-[11px] uppercase tracking-[0.1em] text-ink-400">
+                        No captions for these ranges.
+                      </p>
+                    ) : (
+                      captionPreview.map((item) => (
+                        <div
+                          key={item.key}
+                          className="sheet-flat border border-line bg-paper-0 p-3"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="mono text-[10px] uppercase tracking-[0.1em] text-ink-400">
+                              {item.range.label} · {item.data.count} cue
+                              {item.data.count === 1 ? "" : "s"}
+                            </span>
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                disabled={!rangeCaptionText(item, false)}
+                                onClick={() =>
+                                  void handleCopyCaptionText(
+                                    rangeCaptionText(item, false),
+                                    `${item.key}-plain`,
+                                  )
+                                }
+                                className="btn btn-quiet"
+                              >
+                                <CopyIcon className="h-3 w-3" />
+                                {captionCopyKey === `${item.key}-plain`
+                                  ? "Copied"
+                                  : "Copy"}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={!rangeCaptionText(item, true)}
+                                onClick={() =>
+                                  void handleCopyCaptionText(
+                                    rangeCaptionText(item, true),
+                                    `${item.key}-timed`,
+                                  )
+                                }
+                                className="btn btn-quiet"
+                              >
+                                <CopyIcon className="h-3 w-3" />
+                                {captionCopyKey === `${item.key}-timed`
+                                  ? "Copied"
+                                  : "Timed"}
+                              </button>
+                            </div>
+                          </div>
+                          <div className="mt-2 space-y-1">
+                            {item.data.cues.length ? (
+                              item.data.cues.map((cue, cueIndex) => (
+                                <p
+                                  key={`${item.key}-cue-${cueIndex}`}
+                                  className="whitespace-pre-line text-[12px] leading-5 text-ink-800"
+                                >
+                                  <span className="mono mr-2 text-[10px] text-ink-400">
+                                    {formatDuration(cue.start)}
+                                  </span>
+                                  {cueText(cue)}
+                                </p>
+                              ))
+                            ) : (
+                              <p className="mono text-[11px] uppercase tracking-[0.1em] text-ink-400">
+                                No transcript words in this range.
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                ) : null}
               </div>
 
               <fieldset>

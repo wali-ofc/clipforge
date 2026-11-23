@@ -101,10 +101,28 @@ def _apply_sqlite_additive_migrations(engine: Engine) -> None:
             "crop_plan": "JSON NOT NULL DEFAULT '{}'",
             "tracking_details": "JSON NOT NULL DEFAULT '{}'",
         },
+        "sources": {
+            "transcript_path": "VARCHAR(1024)",
+            "transcript_language": "VARCHAR(16)",
+            "transcript_segment_count": "INTEGER",
+            "has_speech": "BOOLEAN",
+            "transcript_status": "VARCHAR(32) NOT NULL DEFAULT 'none'",
+            "transcript_error": "TEXT",
+        },
     }
 
     with engine.begin() as connection:
+        existing_tables = {
+            row[0]
+            for row in connection.exec_driver_sql(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }
         for table, columns in additions.items():
+            # Legacy databases created before source projects existed have no
+            # sources table; SQLAlchemy will create it with all columns later.
+            if table not in existing_tables:
+                continue
             existing = {
                 row[1]
                 for row in connection.exec_driver_sql(

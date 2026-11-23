@@ -70,6 +70,9 @@ def create_app(
 
         app.state.engine = engine
         app.state.session_factory = session_factory
+        # Source-level transcription reuses the same configured transcriber as
+        # the job worker, so a video is never loaded by a second model instance.
+        app.state.transcriber = transcriber
 
         media_tools = check_media_tools(resolved_settings)
         app.state.media_tools = media_tools

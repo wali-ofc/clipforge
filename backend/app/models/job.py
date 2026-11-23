@@ -154,7 +154,22 @@ class Job(Base):
 
     @property
     def has_transcript(self) -> bool:
-        return self.transcript_path is not None
+        if self.transcript_path is not None:
+            return True
+        source = getattr(self, "source", None)
+        return bool(source is not None and source.transcript_path is not None)
+
+    @property
+    def source_transcript_status(self) -> str | None:
+        source = getattr(self, "source", None)
+        if source is None:
+            return None
+        return getattr(source, "transcript_status", None)
+
+    @property
+    def source_has_transcript(self) -> bool:
+        source = getattr(self, "source", None)
+        return bool(source is not None and source.transcript_path is not None)
 
     @property
     def has_clips(self) -> bool:

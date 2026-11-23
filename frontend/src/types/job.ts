@@ -14,6 +14,12 @@ export interface Source {
   has_audio: boolean;
   container_format: string | null;
   frame_rate: number | null;
+  has_transcript: boolean;
+  transcript_language: string | null;
+  transcript_segment_count: number | null;
+  has_speech: boolean | null;
+  transcript_status: "none" | "queued" | "processing" | "completed" | "failed" | string;
+  transcript_error: string | null;
   job_count: number;
   created_at: string;
   updated_at: string;
@@ -55,6 +61,8 @@ export interface Job {
   transcript_language: string | null;
   transcript_segment_count: number | null;
   has_speech: boolean | null;
+  source_has_transcript?: boolean;
+  source_transcript_status?: string | null;
   clip_count: number;
   clip_selection_model: string | null;
   speaker_tracking_enabled: boolean;
@@ -129,4 +137,36 @@ export interface Health {
     max_upload_bytes: number;
     allowed_formats: string[];
   };
+}
+
+export interface CaptionCue {
+  start: number;
+  end: number;
+  text: string;
+  display_text?: string;
+}
+
+export interface CaptionDefaults {
+  language: "roman" | "original" | string;
+  style: string;
+  font: string;
+  position: string;
+  burn: false;
+}
+
+export interface CaptionsResponse {
+  job_id?: string;
+  source_id?: string;
+  clip_id?: string;
+  language: string;
+  source_language: string | null;
+  count: number;
+  cues: CaptionCue[];
+  plain_text?: string;
+  timestamped_text?: string;
+  start?: number;
+  end?: number;
+  clip_relative?: boolean;
+  max_words?: number;
+  defaults?: CaptionDefaults;
 }

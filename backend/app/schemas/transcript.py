@@ -4,7 +4,8 @@ This is the internal transcript format written to
 ``data/work/<job-id>/transcript.json``. Timestamps are absolute seconds
 relative to the source video and are never re-based to a clip.
 
-Captions/subtitles are intentionally not produced from this data.
+Caption and Romanization layers are derived on demand from this data; the
+stored transcript and its timestamps are never rewritten.
 """
 
 from __future__ import annotations

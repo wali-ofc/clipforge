@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Float, Index, Integer, String
+from sqlalchemy import BigInteger, Boolean, DateTime, Float, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -40,6 +40,15 @@ class Source(Base):
     container_format: Mapped[str | None] = mapped_column(String(128), nullable=True)
     frame_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
 
+    transcript_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    transcript_language: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    transcript_segment_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    has_speech: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    transcript_status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="none"
+    )
+    transcript_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now
     )
@@ -48,3 +57,7 @@ class Source(Base):
     )
 
     jobs: Mapped[list["Job"]] = relationship(back_populates="source")
+
+    @property
+    def has_transcript(self) -> bool:
+        return self.transcript_path is not None

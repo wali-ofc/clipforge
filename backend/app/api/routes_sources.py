@@ -6,11 +6,12 @@ import errno
 import logging
 import os
 import shutil
+import threading
 import time
 import uuid
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
@@ -23,10 +24,20 @@ from app.models.job import Job, JobKind, JobState
 from app.models.source import Source
 from app.schemas.job import JobRead
 from app.schemas.source import SourceRead
+from app.schemas.transcript import Transcript
+from app.services.captioning import (
+    CAPTION_DEFAULTS,
+    captions_for_range,
+    captions_for_transcript,
+    captions_to_plain_text,
+    format_srt,
+    format_transcript_txt,
+)
 from app.services.cleanup import delete_job_files, delete_source_files
 from app.services.media_probe import MediaProbeError, probe_media
 from app.services.segmenter import SegmentSpecError, parse_segment_spec
 from app.services.tooling import media_tools_available
+from app.services.transcription import FasterWhisperTranscriber, load_transcript, save_transcript
 from app.utils.files import (
     EmptyUpload,
     UploadTooLarge,
@@ -36,7 +47,7 @@ from app.utils.files import (
     sanitize_display_filename,
     stream_upload_to_path,
 )
-from app.utils.paths import job_upload_dir, relative_to_data_dir
+from app.utils.paths import job_upload_dir, job_work_dir, relative_to_data_dir, resolve_stored_path
 from app.utils.time import utc_now
 
 logger = logging.getLogger(__name__)
@@ -347,3 +358,218 @@ def delete_source(
         delete_job_files(settings, job_id, include_upload=False)
     delete_source_files(settings, source_key)
     logger.info("Deleted source %s and %d cut job(s)", source_key, len(job_ids))
+
+
+def _load_source_transcript(source: Source, settings) -> Transcript:
+    if not source.transcript_path:
+        raise api_error(404, "transcript_not_found", "No transcript is available for this source yet.")
+    try:
+        path = resolve_stored_path(settings, source.transcript_path)
+    except ValueError as exc:
+        raise api_error(500, "transcript_unreadable", "The stored transcript path is invalid.") from exc
+    if not path.is_file():
+        raise api_error(404, "transcript_not_found", "The stored transcript file is missing.")
+    try:
+        return load_transcript(path)
+    except Exception as exc:  # noqa: BLE001
+        raise api_error(500, "transcript_unreadable", "The stored transcript could not be read.") from exc
+
+
+def _source_caption_filename(source: Source, suffix: str) -> str:
+    stem = sanitize_display_filename(source.original_filename or "video")
+    stem = stem.rsplit(".", 1)[0] if "." in stem else stem
+    return sanitize_display_filename(f"{stem}{suffix}")
+
+
+def _cue_payload(cue) -> dict:
+    return {
+        "start": cue.start,
+        "end": cue.end,
+        "text": cue.text,
+        "display_text": cue.display_text or cue.text,
+    }
+
+
+@router.get("/sources/{source_id}/transcript", response_model=Transcript)
+def get_source_transcript(
+    source_id: UUID,
+    request: Request,
+    session: Session = Depends(get_session),
+) -> Transcript:
+    source = _get_source_or_404(session, source_id)
+    return _load_source_transcript(source, request.app.state.settings)
+
+
+@router.get("/sources/{source_id}/captions")
+def get_source_captions(
+    source_id: UUID,
+    request: Request,
+    language: str = Query("roman"),
+    max_words: int = Query(8, ge=1, le=20),
+    session: Session = Depends(get_session),
+) -> dict:
+    source = _get_source_or_404(session, source_id)
+    transcript = _load_source_transcript(source, request.app.state.settings)
+    cues = captions_for_transcript(transcript, language=language, max_words=max_words)
+    return {
+        "source_id": source.id,
+        "language": (language or "roman").lower(),
+        "source_language": transcript.language,
+        "max_words": max_words,
+        "defaults": CAPTION_DEFAULTS,
+        "count": len(cues),
+        "cues": [_cue_payload(cue) for cue in cues],
+    }
+
+
+@router.get("/sources/{source_id}/captions.srt")
+def download_source_captions_srt(
+    source_id: UUID,
+    request: Request,
+    language: str = Query("roman"),
+    max_words: int = Query(8, ge=1, le=20),
+    session: Session = Depends(get_session),
+) -> Response:
+    source = _get_source_or_404(session, source_id)
+    transcript = _load_source_transcript(source, request.app.state.settings)
+    cues = captions_for_transcript(transcript, language=language, max_words=max_words)
+    body = format_srt(cues)
+    filename = _source_caption_filename(source, "-roman-urdu.srt" if (language or "roman").lower() == "roman" else ".srt")
+    return Response(
+        content=body,
+        media_type="application/x-subrip; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/sources/{source_id}/captions.txt")
+def download_source_captions_txt(
+    source_id: UUID,
+    request: Request,
+    language: str = Query("roman"),
+    max_words: int = Query(8, ge=1, le=20),
+    session: Session = Depends(get_session),
+) -> Response:
+    source = _get_source_or_404(session, source_id)
+    transcript = _load_source_transcript(source, request.app.state.settings)
+    cues = captions_for_transcript(transcript, language=language, max_words=max_words)
+    body = format_transcript_txt(cues, include_timestamps=True)
+    filename = _source_caption_filename(source, "-transcript.txt")
+    return Response(
+        content=body,
+        media_type="text/plain; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/sources/{source_id}/captions/range")
+def get_source_caption_range(
+    source_id: UUID,
+    request: Request,
+    start: float = Query(..., ge=0),
+    end: float = Query(..., gt=0),
+    language: str = Query("roman"),
+    max_words: int = Query(8, ge=1, le=20),
+    clip_relative: bool = Query(True),
+    session: Session = Depends(get_session),
+) -> dict:
+    source = _get_source_or_404(session, source_id)
+    transcript = _load_source_transcript(source, request.app.state.settings)
+    duration = float(source.duration_seconds or transcript.duration or 0.0)
+    if duration and end > duration + 0.25:
+        raise api_error(400, "invalid_range", "End time is beyond the video duration.")
+    if end <= start:
+        raise api_error(400, "invalid_range", "End time must be after start time.")
+    cues = captions_for_range(transcript, start, end, language=language, max_words=max_words, clip_relative=clip_relative)
+    return {
+        "source_id": source.id,
+        "start": start,
+        "end": end,
+        "clip_relative": clip_relative,
+        "language": (language or "roman").lower(),
+        "source_language": transcript.language,
+        "max_words": max_words,
+        "defaults": CAPTION_DEFAULTS,
+        "count": len(cues),
+        "plain_text": captions_to_plain_text(cues, timestamped=False),
+        "timestamped_text": captions_to_plain_text(cues, timestamped=True),
+        "cues": [_cue_payload(cue) for cue in cues],
+    }
+
+
+def _run_source_transcription(app, source_id: str) -> None:
+    settings = app.state.settings
+    session_factory = app.state.session_factory
+    session = session_factory()
+    try:
+        source = session.get(Source, source_id)
+        if source is None:
+            return
+        if source.transcript_status == "processing":
+            return
+        source.transcript_status = "processing"
+        source.transcript_error = None
+        source.updated_at = utc_now()
+        session.commit()
+
+        source_path = resolve_stored_path(settings, source.stored_path)
+        work_dir = settings.work_dir / "sources" / source_id
+        transcriber = getattr(app.state, "transcriber", None)
+        if transcriber is None:
+            transcriber = FasterWhisperTranscriber(settings)
+        transcript = transcriber.transcribe(
+            source_path,
+            float(source.duration_seconds or 0.0),
+            work_dir,
+        )
+        transcript_path = work_dir / "transcript.json"
+        save_transcript(transcript, transcript_path)
+
+        source.transcript_path = relative_to_data_dir(settings, transcript_path)
+        source.transcript_language = transcript.language
+        source.transcript_segment_count = len(transcript.segments)
+        source.has_speech = transcript.has_speech
+        source.transcript_status = "completed"
+        source.transcript_error = None
+        source.updated_at = utc_now()
+        session.commit()
+        logger.info("Generated transcript for source %s", source_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Source transcription failed for %s", source_id)
+        session.rollback()
+        source = session.get(Source, source_id)
+        if source is not None:
+            source.transcript_status = "failed"
+            source.transcript_error = str(exc)[:1000]
+            source.updated_at = utc_now()
+            session.commit()
+    finally:
+        session.close()
+
+
+@router.post("/sources/{source_id}/transcribe", response_model=SourceRead, status_code=202)
+def transcribe_source(
+    source_id: UUID,
+    request: Request,
+    session: Session = Depends(get_session),
+) -> SourceRead:
+    source = _get_source_or_404(session, source_id)
+    if source.transcript_status == "processing":
+        return _source_read(source, _job_count(session, source.id))
+    if source.transcript_path and source.transcript_status == "completed":
+        return _source_read(source, _job_count(session, source.id))
+
+    source.transcript_status = "queued"
+    source.transcript_error = None
+    source.updated_at = utc_now()
+    session.commit()
+    session.refresh(source)
+
+    thread = threading.Thread(
+        target=_run_source_transcription,
+        args=(request.app, str(source_id)),
+        daemon=True,
+        name=f"source-transcribe-{source_id}",
+    )
+    thread.start()
+    return _source_read(source, _job_count(session, source.id))

@@ -24,10 +24,10 @@
     "semantic_hash": "19cba88843a7b7119050eb93c1722662"
   },
   "backend/app/api/routes_clips.py": {
-    "mtime": 1794388713.5502982,
-    "seen": 1794724787.249558,
-    "ast_hash": "aa6247cdd5796cadf1d5b07d8097829b",
-    "semantic_hash": "aa6247cdd5796cadf1d5b07d8097829b"
+    "mtime": 1795436211.2402968,
+    "seen": 1795437432.0063763,
+    "ast_hash": "848d8dea2f351d1563280e8ede05d6f7",
+    "semantic_hash": ""
   },
   "backend/app/api/routes_health.py": {
     "mtime": 1794312087.0331976,
@@ -36,9 +36,9 @@
     "semantic_hash": "9dc7e58a7491d9924074b80c465c77e4"
   },
   "backend/app/api/routes_jobs.py": {
-    "mtime": 1795329177.7387707,
-    "seen": 1795330550.7159379,
-    "ast_hash": "d8be043530d1121f56fd7a2f14bcac1b",
+    "mtime": 1795436180.3978407,
+    "seen": 1795437432.006381,
+    "ast_hash": "114c98bef87ddb2fdb0512040f7957a4",
     "semantic_hash": ""
   },
   "backend/app/api/routes_upload.py": {
@@ -54,15 +54,15 @@
     "semantic_hash": ""
   },
   "backend/app/db.py": {
-    "mtime": 1795328724.8097632,
-    "seen": 1795330550.715954,
-    "ast_hash": "51acab226472e874d89a12c1806ad42f",
+    "mtime": 1795436577.732156,
+    "seen": 1795437432.0063896,
+    "ast_hash": "f1b91279f3ba9017a6d5a0cea6b38323",
     "semantic_hash": ""
   },
   "backend/app/main.py": {
-    "mtime": 1795328925.1172173,
-    "seen": 1795330550.715958,
-    "ast_hash": "04a37b4e8ce470267da74aa6c855ba75",
+    "mtime": 1795437080.9240267,
+    "seen": 1795437432.0063915,
+    "ast_hash": "09e9ecfeca2c0f308b354b8349d87bc3",
     "semantic_hash": ""
   },
   "backend/app/models/__init__.py": {
@@ -78,9 +78,9 @@
     "semantic_hash": "c50af6a9daddb4d5d5c81eb2e90ecf08"
   },
   "backend/app/models/job.py": {
-    "mtime": 1795328692.8997118,
-    "seen": 1795330550.715969,
-    "ast_hash": "2567a6451bd30bdc36743e9240ee656e",
+    "mtime": 1795365913.17886,
+    "seen": 1795437432.0063972,
+    "ast_hash": "3c2e11650b15d17a5e7c99ce869a0d2d",
     "semantic_hash": ""
   },
   "backend/app/schemas/__init__.py": {
@@ -108,16 +108,16 @@
     "semantic_hash": "2de34b18aa041fefa399ca92f7998f1a"
   },
   "backend/app/schemas/job.py": {
-    "mtime": 1795328753.4501812,
-    "seen": 1795330550.715992,
-    "ast_hash": "6ad91978978bad665c740c7c3cf3b950",
+    "mtime": 1795366029.4772577,
+    "seen": 1795437432.0064087,
+    "ast_hash": "47473b95fbc2f87482f640d32b82136b",
     "semantic_hash": ""
   },
   "backend/app/schemas/transcript.py": {
-    "mtime": 1794120477.7041292,
-    "seen": 1794724787.249611,
-    "ast_hash": "b8af3696e40c84fbde2c22686f135fa4",
-    "semantic_hash": "b8af3696e40c84fbde2c22686f135fa4"
+    "mtime": 1795436248.3551702,
+    "seen": 1795437432.0064118,
+    "ast_hash": "34291409943e1f7396ef6efe07de1808",
+    "semantic_hash": ""
   },
   "backend/app/services/__init__.py": {
     "mtime": 1794047698.7726767,
@@ -384,9 +384,9 @@
     "semantic_hash": ""
   },
   "frontend/src/components/JobStatusView.tsx": {
-    "mtime": 1795329647.5749211,
-    "seen": 1795330550.7161694,
-    "ast_hash": "3576bc16bb4e7fcdf9c4cfbbe0ff7de6",
+    "mtime": 1795437015.7554522,
+    "seen": 1795437432.0065145,
+    "ast_hash": "8d61801390df9624b3ca73cc231477c3",
     "semantic_hash": ""
   },
   "frontend/src/components/SiteHeader.tsx": {
@@ -408,9 +408,9 @@
     "semantic_hash": ""
   },
   "frontend/src/lib/api.ts": {
-    "mtime": 1795329522.7696576,
-    "seen": 1795330550.7161877,
-    "ast_hash": "730c5bcd8e76132b2995bcfbe690ecaa",
+    "mtime": 1795436673.3150418,
+    "seen": 1795437432.0065236,
+    "ast_hash": "0cb643f36555ae30348145248833eba0",
     "semantic_hash": ""
   },
   "frontend/src/lib/format.ts": {
@@ -420,9 +420,9 @@
     "semantic_hash": "41f902a6390df44cd688079c5d0b9d74"
   },
   "frontend/src/types/job.ts": {
-    "mtime": 1795329485.2376356,
-    "seen": 1795330550.716196,
-    "ast_hash": "a4c0a35663874bc2159c93e8ecfa22df",
+    "mtime": 1795436665.397758,
+    "seen": 1795437432.0065272,
+    "ast_hash": "47f6cec803ab438ee3ac9e39a1028079",
     "semantic_hash": ""
   },
   "frontend/tsconfig.json": {
@@ -492,21 +492,21 @@
     "semantic_hash": ""
   },
   "backend/app/api/routes_sources.py": {
-    "mtime": 1795330773.6052177,
-    "seen": 1795331050.1795194,
-    "ast_hash": "9ad38d43d7eba0425d5e09989115ed36",
+    "mtime": 1795437089.880867,
+    "seen": 1795437432.0063832,
+    "ast_hash": "1ff527ddb9e31917161fbf40a08c6a8c",
     "semantic_hash": ""
   },
   "backend/app/models/source.py": {
-    "mtime": 1795328633.899632,
-    "seen": 1795330550.7159727,
-    "ast_hash": "51dc610f8ba750151a21bf8f47a000d3",
+    "mtime": 1795365537.216504,
+    "seen": 1795437432.006399,
+    "ast_hash": "dbfdaddfa6d5386865581fc18b55dcb1",
     "semantic_hash": ""
   },
   "backend/app/schemas/source.py": {
-    "mtime": 1795328739.2486427,
-    "seen": 1795330550.7159953,
-    "ast_hash": "eb46bc95bf6f7835798e6fbcedc9187a",
+    "mtime": 1795365549.0365016,
+    "seen": 1795437432.0064101,
+    "ast_hash": "b1e30c794e87a10592f2aafa2ad0f3f0",
     "semantic_hash": ""
   },
   "backend/tests/test_sources.py": {
@@ -516,9 +516,9 @@
     "semantic_hash": ""
   },
   "frontend/src/components/SegmenterWorkspace.tsx": {
-    "mtime": 1795329971.8248644,
-    "seen": 1795330550.7161727,
-    "ast_hash": "2b37f15df3fe1ef92547cc1d2095807f",
+    "mtime": 1795436774.3599875,
+    "seen": 1795437432.0065162,
+    "ast_hash": "87debe5958c9ddf3f071b9eef5fd5711",
     "semantic_hash": ""
   },
   "backend/app/services/clip_prescore.py": {
@@ -555,6 +555,24 @@
     "mtime": 1795352999.5120318,
     "seen": 1795353379.902738,
     "ast_hash": "c4af116d5076916e13ed48372e45a948",
+    "semantic_hash": ""
+  },
+  "backend/app/services/captioning.py": {
+    "mtime": 1795436140.7478275,
+    "seen": 1795437432.0064158,
+    "ast_hash": "731afbdeeda6a9f54350eaad24ffa4d1",
+    "semantic_hash": ""
+  },
+  "backend/app/services/roman_urdu.py": {
+    "mtime": 1795436099.000343,
+    "seen": 1795437432.0064363,
+    "ast_hash": "cde350be29c3e34faab5bc82f1dcc8dd",
+    "semantic_hash": ""
+  },
+  "backend/tests/test_captions.py": {
+    "mtime": 1795437461.521646,
+    "seen": 1795437536.866603,
+    "ast_hash": "65fe1151d8c11fc8318bc87866bb3e1b",
     "semantic_hash": ""
   },
   "frontend/package-lock.json": {

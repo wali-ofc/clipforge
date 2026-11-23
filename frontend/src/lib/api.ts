@@ -456,3 +456,110 @@ export function getClipFileUrl(clipId: string, download = false): string {
   const base = `${API_BASE_URL}/api/clips/${encodeURIComponent(clipId)}/file`;
   return download ? `${base}?download=true` : base;
 }
+
+export function getJobCaptionsSrtUrl(jobId: string, language = "roman"): string {
+  return `${API_BASE_URL}/api/jobs/${encodeURIComponent(jobId)}/captions.srt?language=${encodeURIComponent(language)}`;
+}
+
+export function getJobCaptionsTxtUrl(jobId: string, language = "roman"): string {
+  return `${API_BASE_URL}/api/jobs/${encodeURIComponent(jobId)}/captions.txt?language=${encodeURIComponent(language)}`;
+}
+
+export async function getJobCaptions(
+  jobId: string,
+  language = "roman",
+  signal?: AbortSignal,
+): Promise<import("@/types/job").CaptionsResponse> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${API_BASE_URL}/api/jobs/${encodeURIComponent(jobId)}/captions?language=${encodeURIComponent(language)}`,
+      { cache: "no-store", signal },
+    );
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") throw error;
+    throw networkError();
+  }
+  const body = await readJson(response);
+  if (!response.ok) {
+    throw errorFromResponse(response.status, body, "Could not load captions.");
+  }
+  return body as import("@/types/job").CaptionsResponse;
+}
+
+export async function getClipCaptions(
+  clipId: string,
+  language = "roman",
+  signal?: AbortSignal,
+): Promise<import("@/types/job").CaptionsResponse> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${API_BASE_URL}/api/clips/${encodeURIComponent(clipId)}/captions?language=${encodeURIComponent(language)}&clip_relative=true`,
+      { cache: "no-store", signal },
+    );
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") throw error;
+    throw networkError();
+  }
+  const body = await readJson(response);
+  if (!response.ok) {
+    throw errorFromResponse(response.status, body, "Could not load clip captions.");
+  }
+  return body as import("@/types/job").CaptionsResponse;
+}
+
+export async function getSourceCaptionRange(
+  sourceId: string,
+  start: number,
+  end: number,
+  language = "roman",
+  signal?: AbortSignal,
+): Promise<import("@/types/job").CaptionsResponse> {
+  const query = new URLSearchParams({
+    start: String(start),
+    end: String(end),
+    language,
+    clip_relative: "true",
+  });
+  let response: Response;
+  try {
+    response = await fetch(
+      `${API_BASE_URL}/api/sources/${encodeURIComponent(sourceId)}/captions/range?${query.toString()}`,
+      { cache: "no-store", signal },
+    );
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") throw error;
+    throw networkError();
+  }
+  const body = await readJson(response);
+  if (!response.ok) {
+    throw errorFromResponse(response.status, body, "Could not load range captions.");
+  }
+  return body as import("@/types/job").CaptionsResponse;
+}
+
+export async function transcribeSource(sourceId: string): Promise<Source> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${API_BASE_URL}/api/sources/${encodeURIComponent(sourceId)}/transcribe`,
+      { method: "POST" },
+    );
+  } catch {
+    throw networkError();
+  }
+  const body = await readJson(response);
+  if (!response.ok) {
+    throw errorFromResponse(response.status, body, "Could not start transcription.");
+  }
+  return body as Source;
+}
+
+export function getSourceCaptionsSrtUrl(sourceId: string, language = "roman"): string {
+  return `${API_BASE_URL}/api/sources/${encodeURIComponent(sourceId)}/captions.srt?language=${encodeURIComponent(language)}`;
+}
+
+export function getSourceCaptionsTxtUrl(sourceId: string, language = "roman"): string {
+  return `${API_BASE_URL}/api/sources/${encodeURIComponent(sourceId)}/captions.txt?language=${encodeURIComponent(language)}`;
+}
