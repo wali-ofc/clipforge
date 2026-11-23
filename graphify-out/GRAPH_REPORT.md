@@ -6,12 +6,12 @@
 - Unclassified: 9 file(s) not represented in the graph (top: .example 2, (none) 2, .log 2)
 
 ## Summary
-- 1464 nodes · 4432 edges · 81 communities (47 shown, 34 thin omitted)
-- Extraction: 90% EXTRACTED · 10% INFERRED · 0% AMBIGUOUS · INFERRED: 448 edges (avg confidence: 0.92)
+- 1464 nodes · 4435 edges · 79 communities (43 shown, 36 thin omitted)
+- Extraction: 90% EXTRACTED · 10% INFERRED · 0% AMBIGUOUS · INFERRED: 454 edges (avg confidence: 0.92)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `d77e76a9`
+- Built from commit: `0e9ed90f`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -29,7 +29,7 @@
 - services/clip_selection.py
 - generate_candidate_regions
 - run_command
-- create_app
+- routes_health.py
 - Face Detection Core
 - Frontend Dependencies
 - App Shell Layout
@@ -42,7 +42,7 @@
 - Landing Page UI
 - Frontend TypeScript Config
 - JobWorker
-- delete_source
+- cleanup_orphan_job_dirs
 - bench_selection.py
 - Project Docs Concepts
 - api_error
@@ -54,10 +54,9 @@
 - SegmenterWorkspace.tsx
 - Design System: ClipForge
 - routes_jobs.py
-- runner.py
+- JobCancelled
 - PostCSS Config
 - Backend Package Meta
-- test_sources.py
 - probe_media
 - test_hardening.py
 - CompactOllamaClipSelector
@@ -67,19 +66,18 @@
 - build_compact_schema
 - SampledFrame
 - CancelToken
-- get_clip_file
 - JobKind
 
 ## God Nodes (most connected - your core abstractions)
 1. `Settings` - 233 edges
-2. `Job` - 53 edges
+2. `Job` - 54 edges
 3. `Transcript` - 52 edges
-4. `utc_now()` - 41 edges
-5. `JobStatusView()` - 41 edges
+4. `JobStatusView()` - 41 edges
+5. `utc_now()` - 41 edges
 6. `SegmenterWorkspace()` - 39 edges
 7. `TranscriptSegment` - 38 edges
-8. `JobState` - 37 edges
-9. `create_app()` - 37 edges
+8. `create_app()` - 37 edges
+9. `JobState` - 37 edges
 10. `process_job()` - 37 edges
 
 ## Surprising Connections (you probably didn't know these)
@@ -99,35 +97,35 @@
 - 2-file cycle: `backend/app/db.py -> backend/app/models/clip.py -> backend/app/db.py`
 - 2-file cycle: `backend/app/db.py -> backend/app/models/source.py -> backend/app/db.py`
 
-## Communities (81 total, 34 thin omitted)
+## Communities (79 total, 36 thin omitted)
 
 ### Community 0 - "test_rendering.py"
 Cohesion: 0.11
 Nodes (22): MediaInfo, build_crop_commands_file(), FFmpegClipRenderer, format_sendcmd_path(), RenderingError, _verify_output(), _media_info(), _require_ffmpeg() (+14 more)
 
 ### Community 1 - "routes_sources.py"
-Cohesion: 0.07
-Nodes (37): api_error(), _check_upload_preconditions(), create_source(), create_source_segment(), _cue_payload(), download_source_captions_srt(), download_source_captions_txt(), get_source() (+29 more)
+Cohesion: 0.05
+Nodes (44): get_session(), api_error(), _cue_payload(), get_clip(), get_clip_captions(), get_clip_file(), _get_clip_or_404(), _resolve_transcript_for_clip() (+36 more)
 
 ### Community 2 - "Job"
 Cohesion: 0.13
-Nodes (14): Job, JobState, apply_progress(), claim_next_queued_job(), _raise_if_cancelled(), _select_clips_with_progress(), on_progress(), on_progress() (+6 more)
+Nodes (12): delete_source(), Job, JobState, utc_now(), apply_progress(), claim_next_queued_job(), recover_interrupted_jobs(), _job() (+4 more)
 
 ### Community 3 - "test_transcript.py"
 Cohesion: 0.07
 Nodes (30): _load_transcript_path(), Transcript, TranscriptWord, build_transcript(), _clamp(), FasterWhisperTranscriber, _finite_float(), is_non_speech_text() (+22 more)
 
 ### Community 4 - "main.py"
-Cohesion: 0.10
-Nodes (19): health(), get_settings(), create_engine_from_settings(), create_session_factory(), ensure_sqlite_directory(), init_db(), _configure_logging(), create_app() (+11 more)
+Cohesion: 0.12
+Nodes (16): get_settings(), create_engine_from_settings(), create_session_factory(), ensure_sqlite_directory(), init_db(), _configure_logging(), create_app(), lifespan() (+8 more)
 
 ### Community 5 - "pipeline.py"
-Cohesion: 0.12
-Nodes (18): _run_source_transcription(), ClipRenderer, _apply_progress(), process_segmenter_job(), job_clips_dir(), job_work_dir(), relative_to_data_dir(), resolve_stored_path() (+10 more)
+Cohesion: 0.09
+Nodes (20): _run_source_transcription(), ClipSelector, ClipRenderer, _apply_progress(), process_segmenter_job(), SpeakerTracker, Transcriber, job_clips_dir() (+12 more)
 
 ### Community 6 - "conftest.py"
 Cohesion: 0.18
-Nodes (18): RenderResult, command_exists(), app(), audio_only_file(), failing_client(), failing_renderer_client(), failing_selector_client(), failing_tracker_client() (+10 more)
+Nodes (19): RenderResult, command_exists(), app(), audio_only_file(), client(), failing_client(), failing_renderer_client(), failing_selector_client() (+11 more)
 
 ### Community 7 - "Frontend UI Components"
 Cohesion: 0.12
@@ -136,10 +134,6 @@ Nodes (34): JobPage(), AlertIcon(), CheckIcon(), CopyIcon(), DownloadIcon(), Fil
 ### Community 8 - "test_upload_jobs.py"
 Cohesion: 0.09
 Nodes (30): test_clip_duration_range_is_validated(), test_clip_hard_range_must_wrap_target_range(), test_clip_score_weights_are_normalized(), test_clip_score_weights_reject_negative_and_zero_totals(), test_clip_score_weights_require_exact_keys(), test_clip_window_overlap_must_be_smaller_than_window(), test_empty_whisper_model_is_rejected(), test_extensions_are_normalized_and_deduplicated() (+22 more)
-
-### Community 9 - "Settings"
-Cohesion: 0.12
-Nodes (6): Settings, cleanup_orphan_job_dirs(), job_directories(), _safe_child(), ensure_data_dirs(), _job_dirs()
 
 ### Community 10 - "services/clip_selection.py"
 Cohesion: 0.05
@@ -153,9 +147,9 @@ Nodes (37): TranscriptSegment, build_units(), flush(), _clamp(), _containment(),
 Cohesion: 0.12
 Nodes (9): sample_clip_frames(), extract_audio(), CommandCancelled, CommandError, CommandNotFoundError, _run_cancellable(), run_command(), _terminate() (+1 more)
 
-### Community 13 - "create_app"
-Cohesion: 0.29
-Nodes (7): client(), test_cleanup_orphan_job_dirs_removes_only_unknown_uuid_dirs(), test_delete_active_job_cancels_worker_and_removes_media(), test_delete_queued_job_removes_upload_without_worker(), test_delete_unknown_or_repeated_job_returns_404(), test_upload_rejects_when_free_disk_is_below_minimum(), _upload()
+### Community 13 - "routes_health.py"
+Cohesion: 0.38
+Nodes (4): health(), HealthCheck, HealthLimits, HealthResponse
 
 ### Community 14 - "Face Detection Core"
 Cohesion: 0.13
@@ -193,9 +187,9 @@ Nodes (16): NotFound(), AIClipperPage(), steps, ArrowRightIcon(), RegMarks(), Up
 Cohesion: 0.11
 Nodes (18): compilerOptions, allowJs, esModuleInterop, incremental, isolatedModules, jsx, lib, module (+10 more)
 
-### Community 30 - "delete_source"
-Cohesion: 0.29
-Nodes (3): delete_source(), delete_source_files(), is_job_uuid()
+### Community 30 - "cleanup_orphan_job_dirs"
+Cohesion: 0.18
+Nodes (6): cleanup_orphan_job_dirs(), is_job_uuid(), job_directories(), _safe_child(), ensure_data_dirs(), _job_dirs()
 
 ### Community 31 - "bench_selection.py"
 Cohesion: 0.17
@@ -206,8 +200,8 @@ Cohesion: 0.16
 Nodes (15): Graphify workflow guidance for ClipForge, Clip selection prompt template, Pinned backend dependency set, Frontend Next.js agent guidance, API and results experience, LLM clip selection via Ollama, ClipForge local-first AI video clipping, ClipForge processing pipeline (+7 more)
 
 ### Community 35 - "api_error"
-Cohesion: 0.26
-Nodes (12): _caption_filename(), _cue_payload(), delete_job(), download_job_captions_srt(), download_job_captions_txt(), get_job(), get_job_caption_range(), get_job_captions() (+4 more)
+Cohesion: 0.20
+Nodes (13): _caption_filename(), _cue_payload(), delete_job(), download_job_captions_srt(), download_job_captions_txt(), get_job(), get_job_caption_range(), get_job_captions() (+5 more)
 
 ### Community 36 - "SegmenterWorkspace"
 Cohesion: 0.18
@@ -238,24 +232,16 @@ Cohesion: 0.09
 Nodes (21): Badges, Buttons, Colors, Components, Design System: ClipForge, Do:, Do's and Don'ts, Don't: (+13 more)
 
 ### Community 46 - "routes_jobs.py"
-Cohesion: 0.11
-Nodes (6): get_session(), _apply_sqlite_additive_migrations(), Base, Source, ClipRead, test_additive_migration_adds_phase4_clip_columns()
-
-### Community 48 - "runner.py"
-Cohesion: 0.14
-Nodes (4): ClipSelector, SpeakerTracker, Transcriber, recover_interrupted_jobs()
-
-### Community 57 - "test_sources.py"
-Cohesion: 0.33
-Nodes (6): _create_source(), _cut(), test_multiple_cuts_reuse_one_source_and_survive_job_deletion(), test_source_segment_validation(), test_source_upload_creates_project_without_a_job(), test_unknown_source_returns_404()
+Cohesion: 0.12
+Nodes (10): _apply_sqlite_additive_migrations(), Base, Source, test_additive_migration_adds_phase4_clip_columns(), _create_source(), _cut(), test_multiple_cuts_reuse_one_source_and_survive_job_deletion(), test_source_segment_validation() (+2 more)
 
 ### Community 58 - "probe_media"
 Cohesion: 0.23
 Nodes (9): _extract_rotation(), MediaProbeError, _parse_float(), _parse_frame_rate(), probe_media(), test_probe_reads_valid_sample(), test_probe_rejects_audio_only_file(), test_probe_rejects_corrupt_file() (+1 more)
 
 ### Community 62 - "test_hardening.py"
-Cohesion: 0.13
-Nodes (11): Clip, delete_job_files(), JobCancelled, BlockingTranscriber, _clip_row(), _job_row(), test_clip_file_endpoint_rejects_unsafe_stored_path(), test_delete_completed_job_removes_record_clips_and_media() (+3 more)
+Cohesion: 0.16
+Nodes (15): Clip, delete_job_files(), _clip_row(), _job_row(), test_cleanup_orphan_job_dirs_removes_only_unknown_uuid_dirs(), test_clip_file_endpoint_rejects_unsafe_stored_path(), test_delete_active_job_cancels_worker_and_removes_media(), test_delete_completed_job_removes_record_clips_and_media() (+7 more)
 
 ### Community 63 - "CompactOllamaClipSelector"
 Cohesion: 0.11
@@ -282,32 +268,28 @@ Cohesion: 0.33
 Nodes (3): SampledFrame, _FakeDetector, test_tracker_orchestration_builds_a_crop_plan()
 
 ### Community 77 - "CancelToken"
-Cohesion: 0.15
-Nodes (3): CancelToken, test_process_job_marks_preexisting_cancellation(), test_run_command_stops_promptly_when_cancelled()
-
-### Community 79 - "get_clip_file"
-Cohesion: 0.31
-Nodes (6): _cue_payload(), get_clip(), get_clip_captions(), get_clip_file(), _get_clip_or_404(), _resolve_transcript_for_clip()
+Cohesion: 0.11
+Nodes (8): CancelToken, _raise_if_cancelled(), _select_clips_with_progress(), on_progress(), on_progress(), on_stage(), test_process_job_marks_preexisting_cancellation(), test_run_command_stops_promptly_when_cancelled()
 
 ## Knowledge Gaps
 - **5 isolated node(s):** `clipforge-backend`, `Graphify workflow guidance for ClipForge`, `Frontend Next.js agent guidance`, `Ollama timeout behavior and tuning guidance`, `Clip selection prompt template`
   These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 459 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **34 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **36 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `Settings` connect `Settings` to `test_rendering.py`, `routes_sources.py`, `Job`, `test_transcript.py`, `main.py`, `pipeline.py`, `conftest.py`, `test_upload_jobs.py`, `services/clip_selection.py`, `generate_candidate_regions`, `run_command`, `create_app`, `Face Detection Core`, `Crop Plan Geometry`, `segmenter.py`, `Face Tracking Frames`, `Speaker Tracking Results`, `config.py`, `JobWorker`, `delete_source`, `bench_selection.py`, `compact_selection.py`, `speaker_tracking.py`, `config.py`, `routes_jobs.py`, `runner.py`, `probe_media`, `test_hardening.py`, `CompactOllamaClipSelector`, `OllamaClient`, `build_compact_schema`, `SampledFrame`?**
-  _High betweenness centrality (0.290) - this node is a cross-community bridge._
+- **Why does `Settings` connect `Settings` to `test_rendering.py`, `routes_sources.py`, `Job`, `test_transcript.py`, `main.py`, `pipeline.py`, `conftest.py`, `test_upload_jobs.py`, `services/clip_selection.py`, `generate_candidate_regions`, `run_command`, `routes_health.py`, `Face Detection Core`, `Crop Plan Geometry`, `segmenter.py`, `Face Tracking Frames`, `Speaker Tracking Results`, `config.py`, `JobWorker`, `cleanup_orphan_job_dirs`, `bench_selection.py`, `compact_selection.py`, `speaker_tracking.py`, `config.py`, `routes_jobs.py`, `probe_media`, `test_hardening.py`, `CompactOllamaClipSelector`, `OllamaClient`, `build_compact_schema`, `SampledFrame`, `CancelToken`?**
+  _High betweenness centrality (0.296) - this node is a cross-community bridge._
 - **Are the 153 inferred relationships involving `Settings` (e.g. with `health()` and `cleanup_orphan_job_dirs()`) actually correct?**
   _`Settings` has 153 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `clipforge-backend`, `Graphify workflow guidance for ClipForge`, `Frontend Next.js agent guidance` to the rest of the system?**
   _5 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `test_rendering.py` be split into smaller, more focused modules?**
   _Cohesion score 0.1091753774680604 - nodes in this community are weakly interconnected._
-- **Why does `Transcript` connect `test_transcript.py` to `routes_sources.py`, `Job`, `api_error`, `pipeline.py`, `compact_selection.py`, `test_captions.py`, `speaker_tracking.py`, `services/clip_selection.py`, `runner.py`, `Speaker Tracking Results`, `bench_selection.py`, `CompactOllamaClipSelector`?**
-  _High betweenness centrality (0.035) - this node is a cross-community bridge._
-- **Are the 29 inferred relationships involving `Job` (e.g. with `_resolve_transcript_for_clip()` and `_caption_filename()`) actually correct?**
-  _`Job` has 29 INFERRED edges - model-reasoned connections that need verification._
+- **Why does `Transcript` connect `test_transcript.py` to `routes_sources.py`, `api_error`, `pipeline.py`, `compact_selection.py`, `test_captions.py`, `speaker_tracking.py`, `services/clip_selection.py`, `CancelToken`, `Speaker Tracking Results`, `bench_selection.py`, `CompactOllamaClipSelector`?**
+  _High betweenness centrality (0.057) - this node is a cross-community bridge._
+- **Are the 30 inferred relationships involving `Job` (e.g. with `_resolve_transcript_for_clip()` and `_caption_filename()`) actually correct?**
+  _`Job` has 30 INFERRED edges - model-reasoned connections that need verification._
 - **Should `routes_sources.py` be split into smaller, more focused modules?**
-  _Cohesion score 0.06865401987353206 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.05157232704402516 - nodes in this community are weakly interconnected._
